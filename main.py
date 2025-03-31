@@ -8,14 +8,15 @@ WINDOW_HEIGHT = 800
 BG_COLOR = (30, 30, 30)
 TEXT_COLOR = (255, 255, 255)
 
-def draw_ui(screen, font):
+def draw_ui(screen, font, grid):
     # Example placeholder UI panel
     pygame.draw.rect(screen, (50, 50, 50), (600, 0, 200, WINDOW_HEIGHT))  # Sidebar
     metrics = [
-        "Avg Wait: 0.0s",
-        "Cars Processed: 0",
-        "Fitness: 0.0",
+        f"Avg Wait: {grid.avg_wait_time:.1f}s",
+        f"Cars Processed: {grid.cars_processed}",
+        f"Fitness: {grid.fitness:.2f}",
     ]
+
     for idx, text in enumerate(metrics):
         label = font.render(text, True, TEXT_COLOR)
         screen.blit(label, (610, 20 + idx * 30))
@@ -40,7 +41,7 @@ def main():
 
         screen.fill(BG_COLOR)
         grid.draw(screen, dt)
-        draw_ui(screen, font)
+        draw_ui(screen, font, grid)
         pygame.display.flip()
 
 

@@ -24,10 +24,12 @@ class Grid:
         self.cars = []
         self.spawn_timer = 0.0
         self.spawn_interval = 2.0  # seconds between spawns
-        # self.cars.append(Car(self.offset_x + CELL_SIZE // 2, WINDOW_HEIGHT, "N"))
-        # self.cars.append(Car(self.offset_x + 2 * CELL_SIZE + CELL_SIZE // 2, 0, "S"))
-        # self.cars.append(Car(0, self.offset_y + CELL_SIZE + CELL_SIZE // 2, "E"))
-        # self.cars.append(Car(WINDOW_WIDTH - SIDEBAR_WIDTH, self.offset_y + 2 * CELL_SIZE + CELL_SIZE // 2, "W"))
+        
+        self.total_wait_time = 0.0
+        self.cars_processed = 0
+        self.avg_wait_time = 0.0
+        self.fitness = 0.0
+
 
         self.intersections = []
         for row in range(self.grid_size):
@@ -68,13 +70,38 @@ class Grid:
             car.draw(screen)
 
         # Remove cars off-screen
-        self.cars = [c for c in self.cars if 0 <= c.x <= 600 and 0 <= c.y <= 800]
+        remaining_cars = []
+        for c in self.cars:
+            if 0 <= c.x <= 600 and 0 <= c.y <= 800:
+                remaining_cars.append(c)
+            else:
+                self.total_wait_time += c.stopped_time
+                self.cars_processed += 1
+
+        self.cars = remaining_cars
+
+        # Avoid div by zero
+        if self.cars_processed > 0:
+            self.avg_wait_time = self.total_wait_time / self.cars_processed
+        else:
+            self.avg_wait_time = 0.0
+
 
         # Spawn new cars
         self.spawn_timer += dt
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_car()
             self.spawn_timer = 0
+            
+        self.fitness = (
+            0.5 * self.avg_wait_time +
+            2.0 * sum(1 for c in self.cars if c.stopped_time > 10.0) +
+            0.2 * sum(1 for i in self.intersections if i.phase == "ALL_RED") + 
+            0.05 * len(self.cars)
+
+            
+        )
+
             
     def spawn_car(self):
         edge = random.choice(["N", "S", "E", "W"])
