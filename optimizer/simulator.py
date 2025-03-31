@@ -11,10 +11,12 @@ class Simulator:
         grid = Grid()
 
         # Apply config (light durations)
-        for inter in grid.intersections:
-            inter.ns_duration = config.get("ns_duration", 5)
-            inter.ew_duration = config.get("ew_duration", 5)
-            inter.all_red_duration = config.get("all_red_duration", 2)
+        for inter, cfg in zip(grid.intersections, config):
+            inter.ns_duration = cfg["ns_duration"]
+            inter.ew_duration = cfg["ew_duration"]
+            inter.all_red_duration = cfg["all_red_duration"]
+
+
 
         elapsed = 0.0
         while elapsed < duration:

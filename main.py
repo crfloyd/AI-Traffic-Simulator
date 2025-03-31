@@ -1,6 +1,8 @@
 import pygame
 import sys
 from simulation.grid import Grid
+from optimizer.controller import AnnealingController
+
 
 
 WINDOW_WIDTH = 800
@@ -8,14 +10,23 @@ WINDOW_HEIGHT = 800
 BG_COLOR = (30, 30, 30)
 TEXT_COLOR = (255, 255, 255)
 
-def draw_ui(screen, font, grid):
+def draw_ui(screen, font, grid, controller):
     # Example placeholder UI panel
     pygame.draw.rect(screen, (50, 50, 50), (600, 0, 200, WINDOW_HEIGHT))  # Sidebar
+    debug = controller.get_debug_info()
+
     metrics = [
-        f"Avg Wait: {grid.avg_wait_time:.1f}s",
-        f"Cars Processed: {grid.cars_processed}",
-        f"Fitness: {grid.fitness:.2f}",
+        "Live Traffic Stats:",
+        f"  Avg Wait: {grid.avg_wait_time:.1f}s",
+        f"  Cars Processed: {grid.cars_processed}",
+        f"  Live Fitness: {grid.fitness:.2f}",
+        "",
+        "Annealing Debug:",
+        f"  Best Fitness: {debug['best_fitness']:.2f}",
+        f"  Temp: {debug['temperature']:.2f}",
+        f"  Next Mutation: {debug['countdown']:.1f}s"
     ]
+
 
     for idx, text in enumerate(metrics):
         label = font.render(text, True, TEXT_COLOR)
@@ -29,6 +40,7 @@ def main():
 
     font = pygame.font.SysFont("Arial", 20)
     grid = Grid()
+    controller = AnnealingController()
 
     running = True
 
@@ -40,8 +52,9 @@ def main():
                 running = False
 
         screen.fill(BG_COLOR)
+        controller.update(dt, grid)
         grid.draw(screen, dt)
-        draw_ui(screen, font, grid)
+        draw_ui(screen, font, grid, controller)
         pygame.display.flip()
 
 
@@ -50,3 +63,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
