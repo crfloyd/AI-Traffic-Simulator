@@ -56,6 +56,7 @@ class Grid:
 
         # Draw intersections
         for intersection in self.intersections:
+            intersection.update(1/60) # Assuming 60 FPS
             intersection.draw(screen)
             
         for car in self.cars:
