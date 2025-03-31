@@ -37,6 +37,10 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                for intersection in grid.intersections:
+                    intersection.toggle()
+
 
         grid.draw(screen)
         draw_ui(screen, font)
