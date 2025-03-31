@@ -32,21 +32,17 @@ def main():
     running = True
 
     while running:
-        screen.fill(BG_COLOR)
+        dt = clock.tick(60) / 1000.0  # Delta time in seconds
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                for intersection in grid.intersections:
-                    intersection.toggle()
 
-
-        grid.draw(screen)
+        screen.fill(BG_COLOR)
+        grid.draw(screen, dt)
         draw_ui(screen, font)
-
         pygame.display.flip()
-        clock.tick(60)
+
 
     pygame.quit()
     sys.exit()

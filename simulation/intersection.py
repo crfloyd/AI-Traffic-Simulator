@@ -19,19 +19,24 @@ class Intersection:
         # Internal state
         self.phase = 'NS'  # 'NS', 'EW', or 'ALL_RED'
         self.elapsed = 0.0  # time in current phase
+        self.last_phase = "NS"  # track what we were before ALL_RED
+        
 
     def update(self, dt):
         self.elapsed += dt
 
         if self.phase == 'NS' and self.elapsed >= self.ns_duration:
             self.phase = 'ALL_RED'
+            self.last_phase = 'NS'
             self.elapsed = 0
         elif self.phase == 'EW' and self.elapsed >= self.ew_duration:
             self.phase = 'ALL_RED'
+            self.last_phase = 'EW'
             self.elapsed = 0
         elif self.phase == 'ALL_RED' and self.elapsed >= self.all_red_duration:
-            self.phase = 'EW' if self.phase_before == 'NS' else 'NS'
+            self.phase = 'EW' if self.last_phase == 'NS' else 'NS'
             self.elapsed = 0
+
 
     @property
     def phase_before(self):
