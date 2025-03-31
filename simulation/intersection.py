@@ -10,6 +10,10 @@ class Intersection:
         self.grid_y = grid_y
         self.cx = cx
         self.cy = cy
+        self.rect = pygame.Rect(
+            self.cx - 20, self.cy - 20, 40, 40
+        )
+
 
         # Light cycle config
         self.ns_duration = 5  # seconds
@@ -20,6 +24,9 @@ class Intersection:
         self.phase = 'NS'  # 'NS', 'EW', or 'ALL_RED'
         self.elapsed = 0.0  # time in current phase
         self.last_phase = "NS"  # track what we were before ALL_RED
+        self.just_updated = False
+        self.updated_timer = 0.0
+
         
 
     def update(self, dt):
@@ -36,6 +43,12 @@ class Intersection:
         elif self.phase == 'ALL_RED' and self.elapsed >= self.all_red_duration:
             self.phase = 'EW' if self.last_phase == 'NS' else 'NS'
             self.elapsed = 0
+            
+        if self.just_updated:
+            self.updated_timer -= dt
+            if self.updated_timer <= 0:
+                self.just_updated = False
+
 
 
     @property
@@ -61,8 +74,15 @@ class Intersection:
         else:  # 'EW'
             ns_color = (255, 0, 0)
             ew_color = (0, 255, 0)
+        
+        if self.just_updated:
+            pygame.draw.rect(screen, (255, 255, 100), self.rect.inflate(6, 6), border_radius=8)
 
         pygame.draw.circle(screen, ns_color, (self.cx, self.cy - 25), LIGHT_SIZE // 2)
         pygame.draw.circle(screen, ns_color, (self.cx, self.cy + 25), LIGHT_SIZE // 2)
         pygame.draw.circle(screen, ew_color, (self.cx - 25, self.cy), LIGHT_SIZE // 2)
         pygame.draw.circle(screen, ew_color, (self.cx + 25, self.cy), LIGHT_SIZE // 2)
+
+    def mark_updated(self):
+        self.just_updated = True
+        self.updated_timer = 1.5  # seconds

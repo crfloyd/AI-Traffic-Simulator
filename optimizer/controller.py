@@ -11,10 +11,11 @@ class AnnealingController:
         self.interval = run_interval
         self.timer = 0.0
 
-        self.current_config = self.current_config = [
+        self.current_config = [
             {"ns_duration": 5, "ew_duration": 5, "all_red_duration": 2}
             for _ in range(9) 
         ]
+        self.prev_config = [cfg.copy() for cfg in self.current_config]
 
         self.current_fitness = self.sim.run(self.current_config, duration=5)
 
@@ -37,7 +38,7 @@ class AnnealingController:
         self.timer += dt
 
         if self.T < self.T_min:
-            return  # Done
+            return  # Annealing complete
 
         if self.timer >= self.interval:
             self.timer = 0
@@ -59,11 +60,23 @@ class AnnealingController:
 
             print(f"Annealing step | T={self.T:.2f} | Current={self.current_fitness:.2f} | Best={self.best_fitness:.2f}")
 
-            # per-intersection configs
-            for inter, cfg in zip(grid.intersections, self.current_config):
+            # Apply new config to grid and highlight changed intersections
+            for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
                 inter.ns_duration = cfg["ns_duration"]
                 inter.ew_duration = cfg["ew_duration"]
                 inter.all_red_duration = cfg["all_red_duration"]
+
+                if (
+                    cfg["ns_duration"] != old_cfg["ns_duration"] or
+                    cfg["ew_duration"] != old_cfg["ew_duration"] or
+                    cfg["all_red_duration"] != old_cfg["all_red_duration"]
+                ):
+                    inter.mark_updated()
+
+            # Update prev_config for next comparison
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+
+
                 
     def get_debug_info(self):
         return {

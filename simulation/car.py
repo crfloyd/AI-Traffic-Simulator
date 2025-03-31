@@ -9,7 +9,7 @@ class Car:
         self.x = x
         self.y = y
         self.direction = direction  # "N", "S", "E", "W"
-        self.speed = 2
+        self.speed = 100 # pixels per second
         self.state = "moving"  # or "waiting"
         self.stopped_time = 0.0
 
@@ -25,13 +25,14 @@ class Car:
         self.stopped_time = 0
 
         if self.direction == "N":
-            self.y -= self.speed
+            self.y -= self.speed * dt
         elif self.direction == "S":
-            self.y += self.speed
+            self.y += self.speed * dt
         elif self.direction == "E":
-            self.x += self.speed
+            self.x += self.speed * dt
         elif self.direction == "W":
-            self.x -= self.speed
+            self.x -= self.speed * dt
+
 
     def draw(self, screen):
         if self.direction in ("N", "S"):
