@@ -4,7 +4,7 @@ import threading
 from optimizer.simulator import Simulator
 
 class AnnealingController:
-    def __init__(self, run_interval=15, T_start=100, T_min=1, alpha=0.95):
+    def __init__(self, run_interval=10, T_start=100, T_min=1, alpha=0.90):
         self.sim = Simulator()
         self.T = T_start
         self.T_min = T_min
@@ -62,6 +62,23 @@ class AnnealingController:
 
     def update(self, dt, grid):
         self.timer += dt
+        
+        # If we've cooled down completely, lock to best config
+        if self.T <= self.T_min and not self.eval_thread and self.status_message != "Optimization complete":
+            print("🌡️ Optimization complete — locking best config")
+            self.current_config = self.best_config
+            self.status_message = "Optimization complete"
+            
+            # Apply the best config to the live grid
+            for inter, cfg in zip(grid.intersections, self.best_config):
+                inter.ns_duration = cfg["ns_duration"]
+                inter.ew_duration = cfg["ew_duration"]
+                inter.elapsed = 0.0
+                inter.mark_updated()
+
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+            return
+
 
         if self.pending_result:
             new_config, new_fitness, new_throughput, cars_processed = self.pending_result
@@ -119,11 +136,12 @@ class AnnealingController:
                 
                 inter.elapsed = 0.0
 
-                if (
-                    cfg["ns_duration"] != old_cfg["ns_duration"] or
-                    cfg["ew_duration"] != old_cfg["ew_duration"]
-                ):
-                    inter.mark_updated()
+                if self.T > self.T_min: 
+                    if (
+                        cfg["ns_duration"] != old_cfg["ns_duration"] or
+                        cfg["ew_duration"] != old_cfg["ew_duration"]
+                    ):
+                        inter.mark_updated()
 
             self.prev_config = [cfg.copy() for cfg in self.current_config]
             self.status_message = "Waiting for next mutation..."
