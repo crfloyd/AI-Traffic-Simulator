@@ -19,7 +19,7 @@ class Intersection:
 
         self.ns_duration = 5
         self.ew_duration = 5
-        self.all_red_duration = 2
+        self.all_red_duration = 1
 
         self.just_updated = False
         self.updated_timer = 0.0

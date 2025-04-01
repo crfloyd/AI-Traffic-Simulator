@@ -68,7 +68,7 @@ class Grid:
 
         # Update and draw cars
         for car in self.cars:
-            car.update(self.intersections, dt)
+            car.update(self.intersections, dt, self.cars)
             car.draw(screen)
 
         # Remove cars off-screen
@@ -135,8 +135,12 @@ class Grid:
             y = self.offset_y + random.choice(range(self.grid_size)) * CELL_SIZE + CELL_SIZE // 2
             direction = "W"
 
-        from simulation.car import Car
-        self.cars.append(Car(x, y, direction))
+        max_speed = random.uniform(80.0, 120.0)
+        acceleration = random.uniform(40.0, 70.0)
+
+        car = Car(x, y, direction, max_speed=max_speed, acceleration=acceleration, initial_speed=max_speed)
+        # car.speed = max_speed  # Entering cars are already at full speed
+        self.cars.append(car)
         # print(f"Spawned car going {direction} at ({x:.1f}, {y:.1f})")
 
 
