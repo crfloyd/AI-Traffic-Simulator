@@ -18,6 +18,9 @@ class Car:
         self.acceleration = acceleration
         self.state = "moving"  # or "waiting"
         self.stopped_time = 0.0
+        self.length = CAR_LENGTH
+        self.width = CAR_WIDTH
+
 
     def update(self, intersections, dt, cars):
         near_intersection = any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
@@ -53,16 +56,17 @@ class Car:
 
         pygame.draw.rect(screen, CAR_COLOR, rect)
 
-    def is_near(self, intersection, threshold=30):
+    def is_near(self, intersection, threshold=35):
         if self.direction == "N":
-            return abs(self.x - intersection.cx) < 10 and 0 < self.y - intersection.cy < threshold
+            return abs(self.x - intersection.cx) < 10 and 0 < self.front_position() - intersection.cy < threshold
         if self.direction == "S":
-            return abs(self.x - intersection.cx) < 10 and 0 < intersection.cy - self.y < threshold
+            return abs(self.x - intersection.cx) < 10 and 0 < intersection.cy - self.front_position() < threshold
         if self.direction == "E":
-            return abs(self.y - intersection.cy) < 10 and 0 < intersection.cx - self.x < threshold
+            return abs(self.y - intersection.cy) < 10 and 0 < intersection.cx - self.front_position() < threshold
         if self.direction == "W":
-            return abs(self.y - intersection.cy) < 10 and 0 < self.x - intersection.cx < threshold
+            return abs(self.y - intersection.cy) < 10 and 0 < self.front_position() - intersection.cx < threshold
         return False
+
 
     def can_go(self, intersection):
         if intersection.phase == "ALL_RED":
@@ -119,3 +123,14 @@ class Car:
             return abs(self.y - other.y)
         else:
             return abs(self.x - other.x)
+        
+    def front_position(self):
+        if self.direction == "N":
+            return self.y - self.length / 2
+        elif self.direction == "S":
+            return self.y + self.length / 2
+        elif self.direction == "E":
+            return self.x + self.length / 2
+        elif self.direction == "W":
+            return self.x - self.length / 2
+
