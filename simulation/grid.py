@@ -13,7 +13,8 @@ WINDOW_HEIGHT = 800
 SIDEBAR_WIDTH = 200
 
 class Grid:
-    def __init__(self):
+    def __init__(self, headless=False):
+        self.headless = headless
         self.grid_size = GRID_SIZE
         self.grid_width = CELL_SIZE * self.grid_size
         self.grid_height = CELL_SIZE * self.grid_size
@@ -23,7 +24,7 @@ class Grid:
         
         self.cars = []
         self.spawn_timer = 0.0
-        self.spawn_interval = 2.0  # seconds between spawns
+        self.spawn_interval = 0.6 if headless else 2.0   # seconds between spawns
         
         self.total_wait_time = 0.0
         self.cars_processed = 0
@@ -73,7 +74,7 @@ class Grid:
         # Remove cars off-screen
         remaining_cars = []
         for c in self.cars:
-            if 0 <= c.x <= 600 and 0 <= c.y <= 800:
+            if -50 <= c.x <= WINDOW_WIDTH - SIDEBAR_WIDTH + 50 and -50 <= c.y <= WINDOW_HEIGHT + 50:
                 remaining_cars.append(c)
             else:
                 self.total_wait_time += c.stopped_time
@@ -91,9 +92,18 @@ class Grid:
 
         # Spawn new cars
         self.spawn_timer += dt
-        if self.spawn_timer >= self.spawn_interval:
-            self.spawn_car()
-            self.spawn_timer = 0
+        if self.headless:
+            # Spawn as many cars as needed in a tight loop
+            while self.spawn_timer >= self.spawn_interval: 
+                print("Spawning a car in headless mode...")
+                self.spawn_car()
+                self.spawn_timer -= self.spawn_interval
+        else:
+            if self.spawn_timer >= self.spawn_interval:
+                print("Spawning a car in UI mode...")
+                self.spawn_car()
+                self.spawn_timer = 0
+
             
         self.fitness = (
             0.5 * self.avg_wait_time +
@@ -127,5 +137,7 @@ class Grid:
 
         from simulation.car import Car
         self.cars.append(Car(x, y, direction))
+        print(f"Spawned car going {direction} at ({x:.1f}, {y:.1f})")
+
 
 

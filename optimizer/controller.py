@@ -1,5 +1,6 @@
 import math
 import random
+import threading
 from optimizer.simulator import Simulator
 
 class AnnealingController:
@@ -12,92 +13,130 @@ class AnnealingController:
         self.timer = 0.0
 
         self.current_config = [
-            {"ns_duration": 5, "ew_duration": 5, "all_red_duration": 2}
-            for _ in range(9) 
+            {
+                "ns_duration": 5, 
+                "ew_duration": 5,
+            }
+            for _ in range(9)
         ]
         self.prev_config = [cfg.copy() for cfg in self.current_config]
 
-        fitness, throughput = self.sim.run(self.current_config, duration=5)
-        self.current_fitness = fitness
-        self.best_fitness = fitness
-        self.last_throughput = throughput
+        self.current_fitness = None
+        self.best_fitness = None
+        self.last_throughput = 0.0
+        self.fitness_history = []
 
-        self.fitness_history = [fitness]
+        self.last_cars_processed = 0
+        self.max_cars_processed = 0
+
+        self.pending_result = None
+        self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(self.current_config,))
+        
+        self.eval_thread.start()
+
+        self.status_message = "Evaluating initial config..."
 
     def mutate(self, config_list):
         new_config = []
         for cfg in config_list:
-            new_cfg = {
-                "ns_duration": max(2, cfg["ns_duration"] + random.choice([-1, 0, 1])),
-                "ew_duration": max(2, cfg["ew_duration"] + random.choice([-1, 0, 1])),
-                "all_red_duration": min(2.0, max(1.0, cfg["all_red_duration"] + random.choice([-0.5, 0, 0.5]))),
-            }
+            if random.random() < 0.5:  # only mutate ~50% of them
+                new_cfg = {
+                    "ns_duration": max(2, cfg["ns_duration"] + random.choice([-1, 0, 1])),
+                    "ew_duration": max(2, cfg["ew_duration"] + random.choice([-1, 0, 1])),
+                }
+            else:
+                new_cfg = cfg.copy()
             new_config.append(new_cfg)
         return new_config
 
 
+    def evaluate_in_background(self, new_config):
+        fitness, throughput, cars_processed = self.sim.run(new_config, duration=25, return_cars=True)
+        self.pending_result = (new_config, fitness, throughput, cars_processed)
+
     def update(self, dt, grid):
         self.timer += dt
 
-        if self.T < self.T_min:
-            return  # Annealing complete
-
-        if self.timer >= self.interval:
-            self.timer = 0
-            new_config = self.mutate(self.current_config)
-            new_fitness, new_throughput = self.sim.run(new_config, duration=5)
-            self.last_throughput = new_throughput
-
-
-            delta = new_fitness - self.current_fitness
-            accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
-
-            if random.random() < accept_prob:
-                self.current_config = new_config
-                self.current_fitness = new_fitness
-
-                if new_fitness < self.best_fitness:
-                    self.best_config = new_config
-                    self.best_fitness = new_fitness
-
-            self.T *= self.alpha
-
-            print(f"Annealing step | T={self.T:.2f} | Current={self.current_fitness:.2f} | Best={self.best_fitness:.2f}")
+        if self.pending_result:
+            new_config, new_fitness, new_throughput, cars_processed = self.pending_result
+            self.pending_result = None
             
-            # Append current fitness to history for graph
+            print("Config being tested:", new_config)
+            print("NS durations:", [cfg['ns_duration'] for cfg in new_config])
+            print("EW durations:", [cfg['ew_duration'] for cfg in new_config])
+
+            # Reject configurations that cause gridlock
+            if cars_processed == 0:
+                print("⚠️ Gridlock detected — rejecting mutation")
+                self.status_message = "Rejected: gridlock"
+                self.timer = 0
+                return
+
+            self.status_message = "Applying new config..."
+
+            if self.current_fitness is None:
+                self.current_fitness = new_fitness
+                self.best_fitness = new_fitness
+                self.best_config = new_config
+            else:
+                delta = new_fitness - self.current_fitness
+                accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
+
+                if random.random() < accept_prob:
+                    self.current_config = new_config
+                    self.current_fitness = new_fitness
+
+                    if new_fitness < self.best_fitness:
+                        self.best_config = new_config
+                        self.best_fitness = new_fitness
+
+                self.T *= self.alpha
+
+            self.last_throughput = new_throughput
+            self.last_cars_processed = cars_processed
+            self.max_cars_processed = max(self.max_cars_processed, cars_processed)
+
             self.fitness_history.append(self.best_fitness)
             if len(self.fitness_history) > 100:
                 self.fitness_history.pop(0)
 
-            # Apply new config to grid and highlight changed intersections
             for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
                 inter.ns_duration = cfg["ns_duration"]
                 inter.ew_duration = cfg["ew_duration"]
-                inter.all_red_duration = cfg["all_red_duration"]
+                
+                inter.elapsed = 0.0
 
                 if (
                     cfg["ns_duration"] != old_cfg["ns_duration"] or
-                    cfg["ew_duration"] != old_cfg["ew_duration"] or
-                    cfg["all_red_duration"] != old_cfg["all_red_duration"]
+                    cfg["ew_duration"] != old_cfg["ew_duration"]
                 ):
                     inter.mark_updated()
 
-            # Update prev_config for next comparison
             self.prev_config = [cfg.copy() for cfg in self.current_config]
+            self.status_message = "Waiting for next mutation..."
+            self.timer = 0
+
+        elif self.timer >= self.interval and not self.eval_thread:
+            self.status_message = "Evaluating new config..."
+            new_config = self.mutate(self.current_config)
+            self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(new_config,))
+            print("Testing config:", new_config)
+            self.eval_thread.start()
 
 
+    def evaluate_and_cleanup(self, new_config):
+        self.evaluate_in_background(new_config)
+        self.eval_thread = None
 
-                
     def get_debug_info(self):
         return {
-            "best_fitness": self.best_fitness,
+            "best_fitness": self.best_fitness if self.best_fitness is not None else 0.0,
             "temperature": self.T,
             "current_config": self.current_config,
             "countdown": max(0.0, self.interval - self.timer),
             "fitness_history": self.fitness_history,
+            "status": self.status_message,
             "throughput": self.last_throughput,
+            "cars_processed": self.last_cars_processed,
+            "max_cars": self.max_cars_processed,
         }
-
-
-
-

@@ -19,80 +19,83 @@ SIM_SPEED = 1.0  # default time scale
 def draw_ui(screen, font, grid, controller):
     debug = controller.get_debug_info()
 
-    # Sidebar
-    pygame.draw.rect(screen, (50, 50, 50), (WINDOW_WIDTH - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
-    draw_x = WINDOW_WIDTH - SIDEBAR_WIDTH + SIDEBAR_PADDING
+    # Fonts
+    header_font = pygame.font.SysFont("Arial", 20, bold=True)
+    small_font = pygame.font.SysFont("Arial", 16)
 
-    metrics = [
-        "Live Traffic Stats:",
-        f"  Avg Wait: {grid.avg_wait_time:.1f}s",
-        f"  Cars Processed: {grid.cars_processed}",
-        f"  Live Fitness: {grid.fitness:.2f}",
-        # f"  Throughput: {debug['throughput']:.1f}/min",
-        "",
-        "Annealing Debug:",
-        f"  Best Fitness: {debug['best_fitness']:.2f}",
-        f"  Temp: {debug['temperature']:.2f}",
-        f"  Next Mutation: {debug['countdown']:.1f}s",
-        "",
-        f"Sim Speed: {SIM_SPEED:.1f}x"
+    # Sidebar background
+    pygame.draw.rect(screen, (50, 50, 50), (WINDOW_WIDTH - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
+
+    draw_x = WINDOW_WIDTH - SIDEBAR_WIDTH + SIDEBAR_PADDING
+    max_text_width = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING
+
+    # Color-coded status
+    status = debug["status"]
+    if "Evaluating" in status:
+        status_color = (255, 215, 0)  # yellow
+    elif "Applying" in status:
+        status_color = (100, 255, 100)  # green
+    else:
+        status_color = TEXT_COLOR
+
+    lines = [
+        (header_font, "Live Traffic Stats:", TEXT_COLOR),
+        (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
+        (small_font, f"Cars Processed: {grid.cars_processed}", TEXT_COLOR),
+        (small_font, f"Live Fitness: {grid.fitness:.2f}", TEXT_COLOR),
+        (header_font, "", TEXT_COLOR),
+        (header_font, "Annealing Debug:", TEXT_COLOR),
+        (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Temp: {debug['temperature']:.2f}", TEXT_COLOR),
+        (small_font, f"Last Sim Cars: {debug['cars_processed']}", TEXT_COLOR),
+        (small_font, f"Max Sim Cars: {debug['max_cars']}", TEXT_COLOR),
+        (small_font, f"Next Mutation: {debug['countdown']:.1f}s", TEXT_COLOR),
+        (small_font, "Status:", TEXT_COLOR),
+        (small_font, status, status_color),
+        (small_font, "", TEXT_COLOR),
+        (small_font, f"Sim Speed: {SIM_SPEED:.1f}x", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (header_font, "Fitness Trend", TEXT_COLOR),
     ]
 
-    for idx, text in enumerate(metrics):
-        label = font.render(text, True, TEXT_COLOR)
-        screen.blit(label, (draw_x, 20 + idx * 30))
+    y = 20
+    for font_type, text, color in lines:
+        label_surface = font_type.render(text, True, color)
+        if label_surface.get_width() > max_text_width:
+            # Truncate text if needed
+            max_chars = int(len(text) * max_text_width / label_surface.get_width()) - 3
+            text = text[:max_chars] + "..."
+            label_surface = font_type.render(text, True, color)
 
-    # === Fitness Graph ===
-    graph_top = 420
-    max_points = 100  # fixed width window
+        screen.blit(label_surface, (draw_x, y))
+        y += font_type.get_linesize() + 4
+
+    # Fitness graph
     points = debug.get("fitness_history", [])
-    padded_points = points[-max_points:]  # ensure it's capped at max
+    if len(points) > 1:
+        max_val = max(points)
+        min_val = min(points)
+        range_val = max_val - min_val or 1
 
-    # If no values yet, fill with None (to still show graph base)
-    if len(padded_points) < max_points:
-        padded_points = [None] * (max_points - len(padded_points)) + padded_points
+        graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
+        graph_surface.fill((20, 20, 20))
 
-    min_val = min((v for v in padded_points if v is not None), default=0)
-    max_val = max((v for v in padded_points if v is not None), default=1)
-    range_val = max_val - min_val or 1
+        for i in range(len(points) - 1):
+            x1 = i * GRAPH_WIDTH // (len(points) - 1)
+            x2 = (i + 1) * GRAPH_WIDTH // (len(points) - 1)
 
-    # Graph surface
-    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
-    graph_surface.fill((20, 20, 20))
+            y1 = GRAPH_HEIGHT - int((points[i] - min_val) / range_val * GRAPH_HEIGHT)
+            y2 = GRAPH_HEIGHT - int((points[i + 1] - min_val) / range_val * GRAPH_HEIGHT)
 
-    # Draw line and points
-    last_pos = None
-    for i, val in enumerate(padded_points):
-        x = int(i * (GRAPH_WIDTH / max_points))
-        if val is not None:
-            y = GRAPH_HEIGHT - int((val - min_val) / range_val * GRAPH_HEIGHT)
+            pygame.draw.line(graph_surface, (0, 255, 0), (x1, y1), (x2, y2), 2)
+            pygame.draw.circle(graph_surface, (0, 255, 0), (x1, y1), 2)
 
-            # Line
-            if last_pos:
-                pygame.draw.line(graph_surface, (0, 255, 0), last_pos, (x, y), 2)
-            last_pos = (x, y)
+        last_y = GRAPH_HEIGHT - int((points[-1] - min_val) / range_val * GRAPH_HEIGHT)
+        pygame.draw.circle(graph_surface, (0, 255, 0), (GRAPH_WIDTH - 2, last_y), 2)
 
-            # Dot
-            pygame.draw.circle(graph_surface, (255, 255, 255), (x, y), 2)
-        else:
-            last_pos = None  # break line
+        screen.blit(graph_surface, (draw_x, 400))
 
-    # Blit graph
-    screen.blit(graph_surface, (draw_x, graph_top))
 
-    # Min/max labels
-    min_label = font.render(f"{min_val:.2f}", True, TEXT_COLOR)
-    max_label = font.render(f"{max_val:.2f}", True, TEXT_COLOR)
-    screen.blit(min_label, (draw_x, graph_top + GRAPH_HEIGHT - 20))
-    screen.blit(max_label, (draw_x, graph_top - 20))
-
-    # Step label
-    step_label = font.render(f"Step: {len(points)}", True, TEXT_COLOR)
-    screen.blit(step_label, (draw_x, graph_top + GRAPH_HEIGHT + 10))
-
-    # Graph title
-    label = font.render("Fitness Trend", True, TEXT_COLOR)
-    screen.blit(label, (draw_x, graph_top - 40))
 
 
 
@@ -107,10 +110,6 @@ def main():
     font = pygame.font.SysFont("Arial", 20)
     grid = Grid()
 
-    initial_config = [
-        {"ns_duration": 5, "ew_duration": 5, "all_red_duration": 2}
-        for _ in range(9)
-    ]
     controller = AnnealingController()
 
     running = True
