@@ -119,29 +119,46 @@ class Grid:
         edge = random.choice(["N", "S", "E", "W"])
 
         if edge == "N":
-            x = self.offset_x + random.choice(range(self.grid_size)) * CELL_SIZE + CELL_SIZE // 2
+            col = random.choice(range(self.grid_size))
+            x = self.offset_x + col * CELL_SIZE + CELL_SIZE // 2
             y = WINDOW_HEIGHT
             direction = "N"
         elif edge == "S":
-            x = self.offset_x + random.choice(range(self.grid_size)) * CELL_SIZE + CELL_SIZE // 2
+            col = random.choice(range(self.grid_size))
+            x = self.offset_x + col * CELL_SIZE + CELL_SIZE // 2
             y = 0
             direction = "S"
         elif edge == "E":
+            row = random.choice(range(self.grid_size))
             x = 0
-            y = self.offset_y + random.choice(range(self.grid_size)) * CELL_SIZE + CELL_SIZE // 2
+            y = self.offset_y + row * CELL_SIZE + CELL_SIZE // 2
             direction = "E"
         elif edge == "W":
+            row = random.choice(range(self.grid_size))
             x = WINDOW_WIDTH - SIDEBAR_WIDTH
-            y = self.offset_y + random.choice(range(self.grid_size)) * CELL_SIZE + CELL_SIZE // 2
+            y = self.offset_y + row * CELL_SIZE + CELL_SIZE // 2
             direction = "W"
 
-        max_speed = random.uniform(80.0, 120.0)
-        acceleration = random.uniform(40.0, 70.0)
+        # Check if there's enough space in that lane
+        spawn_gap = 50  # You can tweak this if needed
+        for car in self.cars:
+            if car.direction != direction:
+                continue
+            if direction == "N" and abs(car.x - x) < 10 and car.y > y - spawn_gap:
+                return  # Block spawn
+            if direction == "S" and abs(car.x - x) < 10 and car.y < y + spawn_gap:
+                return
+            if direction == "E" and abs(car.y - y) < 10 and car.x < x + spawn_gap:
+                return
+            if direction == "W" and abs(car.y - y) < 10 and car.x > x - spawn_gap:
+                return
 
-        car = Car(x, y, direction, max_speed=max_speed, acceleration=acceleration, initial_speed=max_speed)
-        # car.speed = max_speed  # Entering cars are already at full speed
-        self.cars.append(car)
-        # print(f"Spawned car going {direction} at ({x:.1f}, {y:.1f})")
+        # If clear, spawn
+        from simulation.car import Car
+        acceleration = random.uniform(40.0, 70.0)
+        max_speed = random.uniform(80.0, 100.0)
+        self.cars.append(Car(x, y, direction, max_speed=max_speed, acceleration=acceleration, initial_speed=max_speed))
+
 
 
 
