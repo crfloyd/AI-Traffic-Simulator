@@ -31,6 +31,7 @@ class Grid:
         self.fitness = 0.0
 
 
+
         self.intersections = []
         for row in range(self.grid_size):
             for col in range(self.grid_size):
@@ -79,6 +80,7 @@ class Grid:
                 self.cars_processed += 1
 
         self.cars = remaining_cars
+        
 
         # Avoid div by zero
         if self.cars_processed > 0:
@@ -125,4 +127,5 @@ class Grid:
 
         from simulation.car import Car
         self.cars.append(Car(x, y, direction))
+
 

@@ -17,7 +17,6 @@ class Simulator:
             inter.all_red_duration = cfg["all_red_duration"]
 
 
-
         elapsed = 0.0
         while elapsed < duration:
             dt = self.clock.tick(60) / 1000.0
@@ -25,5 +24,6 @@ class Simulator:
 
             # Run one simulation step
             grid.draw(self.screen, dt)
+        throughput = (grid.cars_processed / duration) * 60  # cars per simulated minute
+        return grid.fitness, throughput
 
-        return grid.fitness

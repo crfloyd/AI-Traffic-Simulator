@@ -17,10 +17,12 @@ class AnnealingController:
         ]
         self.prev_config = [cfg.copy() for cfg in self.current_config]
 
-        self.current_fitness = self.sim.run(self.current_config, duration=5)
+        fitness, throughput = self.sim.run(self.current_config, duration=5)
+        self.current_fitness = fitness
+        self.best_fitness = fitness
+        self.last_throughput = throughput
 
-        self.best_config = self.current_config
-        self.best_fitness = self.current_fitness
+        self.fitness_history = [fitness]
 
     def mutate(self, config_list):
         new_config = []
@@ -43,7 +45,9 @@ class AnnealingController:
         if self.timer >= self.interval:
             self.timer = 0
             new_config = self.mutate(self.current_config)
-            new_fitness = self.sim.run(new_config, duration=5)
+            new_fitness, new_throughput = self.sim.run(new_config, duration=5)
+            self.last_throughput = new_throughput
+
 
             delta = new_fitness - self.current_fitness
             accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
@@ -59,6 +63,11 @@ class AnnealingController:
             self.T *= self.alpha
 
             print(f"Annealing step | T={self.T:.2f} | Current={self.current_fitness:.2f} | Best={self.best_fitness:.2f}")
+            
+            # Append current fitness to history for graph
+            self.fitness_history.append(self.best_fitness)
+            if len(self.fitness_history) > 100:
+                self.fitness_history.pop(0)
 
             # Apply new config to grid and highlight changed intersections
             for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
@@ -77,6 +86,7 @@ class AnnealingController:
             self.prev_config = [cfg.copy() for cfg in self.current_config]
 
 
+
                 
     def get_debug_info(self):
         return {
@@ -84,7 +94,10 @@ class AnnealingController:
             "temperature": self.T,
             "current_config": self.current_config,
             "countdown": max(0.0, self.interval - self.timer),
+            "fitness_history": self.fitness_history,
+            "throughput": self.last_throughput,
         }
+
 
 
 
