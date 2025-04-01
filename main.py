@@ -76,7 +76,7 @@ def draw_ui(screen, font, grid, controller):
     if len(points) > 1:
         max_val = max(points)
         min_val = min(points)
-        range_val = max_val - min_val or 1
+        range_val = max(max_val - min_val, 0.05)
 
         graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
         graph_surface.fill((20, 20, 20))
@@ -127,13 +127,6 @@ def main():
                     SIM_SPEED = min(5.0, SIM_SPEED + 0.5)
                 elif event.key == pygame.K_MINUS:
                     SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
-            elif event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
-                    SIM_SPEED = min(5.0, SIM_SPEED + 0.5)
-                    print(f"Speed increased: {SIM_SPEED:.1f}x")
-                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
-                    print(f"Speed decreased: {SIM_SPEED:.1f}x")
 
 
         controller.update(dt, grid)
