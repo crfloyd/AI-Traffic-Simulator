@@ -78,18 +78,25 @@ class AnnealingController:
                 self.current_fitness = new_fitness
                 self.best_fitness = new_fitness
                 self.best_config = new_config
+                print("🔰 Initialized current and best fitness")
             else:
                 delta = new_fitness - self.current_fitness
                 accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
+                
+                print(f"🔍 Δfitness: {delta:.4f}, T: {self.T:.4f}, p: {accept_prob:.4f}")
 
                 if random.random() < accept_prob:
                     self.current_config = new_config
                     self.current_fitness = new_fitness
+                    print("✅ Accepted new config")
 
                     if new_fitness < self.best_fitness:
                         self.best_config = new_config
                         self.best_fitness = new_fitness
-
+                        print("🌟 New best fitness:", self.best_fitness)
+                else:
+                    print("❌ Rejected new config")
+                    
                 self.T *= self.alpha
 
             self.last_throughput = new_throughput
@@ -131,6 +138,7 @@ class AnnealingController:
     def get_debug_info(self):
         return {
             "best_fitness": self.best_fitness if self.best_fitness is not None else 0.0,
+            "current_fitness": self.current_fitness if self.current_fitness is not None else 0.0,
             "temperature": self.T,
             "current_config": self.current_config,
             "countdown": max(0.0, self.interval - self.timer),

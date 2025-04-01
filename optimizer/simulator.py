@@ -9,33 +9,30 @@ class Simulator:
         self.clock = pygame.time.Clock()
 
     def run(self, config, duration=30, return_cars=False):
-        grid = Grid(headless=True)  # ✅ use headless mode for sim
-        
-        for inter in grid.intersections:
-            print(f"({inter.grid_x}, {inter.grid_y}) phase={inter.phase} elapsed={inter.elapsed:.2f}")
-        print(f"Cars processed: {grid.cars_processed}, Still on grid: {len(grid.cars)}")
+        grid = Grid(headless=True)
 
         # Apply config to each intersection
         for inter, cfg in zip(grid.intersections, config):
             inter.ns_duration = cfg["ns_duration"]
             inter.ew_duration = cfg["ew_duration"]
-            inter.elapsed = random.uniform(0, 3)
+            inter.elapsed = random.uniform(0, 3)  # Desync light timers
 
-        warmup = 10
-        sim_time = duration
-        elapsed = 0.0
+        warmup = 5.0  # Let traffic settle
+        total_sim_time = duration + warmup
 
-        while elapsed < warmup + sim_time:
-            dt = self.clock.tick(60) / 1000.0
-            elapsed += dt
+        # Fixed timestep (simulate at 60 FPS)
+        dt = 1.0 / 60.0
+        steps = int(total_sim_time / dt)
+
+        for _ in range(steps):
             grid.draw(self.screen, dt)
 
-        throughput = (grid.cars_processed / duration) * 60
-
+        # Only count stats from final `duration` seconds
         if return_cars:
-            return grid.fitness, throughput, grid.cars_processed
+            return grid.fitness, (grid.cars_processed / duration) * 60, grid.cars_processed
         else:
-            return grid.fitness, throughput
+            return grid.fitness, (grid.cars_processed / duration) * 60
+
 
 
 

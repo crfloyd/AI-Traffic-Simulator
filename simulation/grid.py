@@ -95,12 +95,12 @@ class Grid:
         if self.headless:
             # Spawn as many cars as needed in a tight loop
             while self.spawn_timer >= self.spawn_interval: 
-                print("Spawning a car in headless mode...")
+                # print("Spawning a car in headless mode...")
                 self.spawn_car()
                 self.spawn_timer -= self.spawn_interval
         else:
             if self.spawn_timer >= self.spawn_interval:
-                print("Spawning a car in UI mode...")
+                # print("Spawning a car in UI mode...")
                 self.spawn_car()
                 self.spawn_timer = 0
 
@@ -137,7 +137,7 @@ class Grid:
 
         from simulation.car import Car
         self.cars.append(Car(x, y, direction))
-        print(f"Spawned car going {direction} at ({x:.1f}, {y:.1f})")
+        # print(f"Spawned car going {direction} at ({x:.1f}, {y:.1f})")
 
 
 

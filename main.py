@@ -46,6 +46,7 @@ def draw_ui(screen, font, grid, controller):
         (header_font, "", TEXT_COLOR),
         (header_font, "Annealing Debug:", TEXT_COLOR),
         (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Current Fitness: {debug['current_fitness']:.2f}", TEXT_COLOR),
         (small_font, f"Temp: {debug['temperature']:.2f}", TEXT_COLOR),
         (small_font, f"Last Sim Cars: {debug['cars_processed']}", TEXT_COLOR),
         (small_font, f"Max Sim Cars: {debug['max_cars']}", TEXT_COLOR),
