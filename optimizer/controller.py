@@ -12,13 +12,15 @@ class AnnealingController:
         self.interval = run_interval
         self.timer = 0.0
 
-        self.current_config = [
-            {
-                "ns_duration": 5, 
-                "ew_duration": 5,
-            }
-            for _ in range(9)
-        ]
+        # self.current_config = [
+        #     {
+        #         "ns_duration": 5, 
+        #         "ew_duration": 5,
+        #     }
+        #     for _ in range(9)
+        # ]
+        # self.prev_config = [cfg.copy() for cfg in self.current_config]
+        self.current_config = [{"ns_duration": 8, "ew_duration": 2} for _ in range(9)]
         self.prev_config = [cfg.copy() for cfg in self.current_config]
 
         self.current_fitness = None
@@ -37,17 +39,21 @@ class AnnealingController:
         self.status_message = "Evaluating initial config..."
 
     def mutate(self, config_list):
-        new_config = []
-        for cfg in config_list:
-            if random.random() < 0.5:  # only mutate ~50% of them
-                new_cfg = {
-                    "ns_duration": max(2, cfg["ns_duration"] + random.choice([-1, 0, 1])),
-                    "ew_duration": max(2, cfg["ew_duration"] + random.choice([-1, 0, 1])),
-                }
-            else:
-                new_cfg = cfg.copy()
-            new_config.append(new_cfg)
+        def clamp(value, min_val, max_val):
+            return max(min_val, min(value, max_val))
+
+        new_config = [cfg.copy() for cfg in config_list]
+
+        num_to_mutate = random.randint(1, 2)
+        for _ in range(num_to_mutate):
+            i = random.randint(0, len(new_config) - 1)
+            new_config[i]["ns_duration"] += random.choice([-1, 1])
+            new_config[i]["ew_duration"] += random.choice([-1, 1])
+            new_config[i]["ns_duration"] = clamp(new_config[i]["ns_duration"], 3, 10)
+            new_config[i]["ew_duration"] = clamp(new_config[i]["ew_duration"], 3, 10)
+
         return new_config
+
 
 
     def evaluate_in_background(self, new_config):

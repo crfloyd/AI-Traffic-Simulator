@@ -108,7 +108,7 @@ class Grid:
         self.fitness = (
             0.5 * self.avg_wait_time +
             2.0 * sum(1 for c in self.cars if c.stopped_time > 10.0) +
-            0.2 * sum(1 for i in self.intersections if i.phase == "ALL_RED") + 
+            # 0.2 * sum(1 for i in self.intersections if i.phase == "ALL_RED") + 
             0.05 * len(self.cars)
 
             
