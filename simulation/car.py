@@ -8,13 +8,12 @@ CAR_STOP_GAP = 15
 CAR_START_GAP = 35
 
 class Car:
-    def __init__(self, x, y, direction, max_speed=100, acceleration=50, initial_speed=None):
+    def __init__(self, x, y, direction, max_speed=100, acceleration=50):
         self.x = x
         self.y = y
         self.direction = direction  # "N", "S", "E", "W"
         self.velocity = 0.0
         self.max_speed = max_speed
-        self.speed = initial_speed if initial_speed is not None else 0.0
         self.acceleration = acceleration
         self.state = "moving"  # or "waiting"
         self.stopped_time = 0.0
@@ -34,11 +33,16 @@ class Car:
         else:
             # Accelerate
             target_speed = self.max_speed * getattr(self, 'road_speed_factor', 1.0)
-            self.velocity += self.acceleration * dt
-            self.velocity = min(self.velocity, target_speed)
+            accel_rate = self.acceleration * dt
 
-            self.state = "moving"
-            self.stopped_time = 0.0
+            # Smooth acceleration using linear interpolation
+            if self.velocity < target_speed:
+                self.velocity += accel_rate
+                self.velocity = min(self.velocity, target_speed)
+            elif self.velocity > target_speed:
+                self.velocity -= accel_rate  # for future use if speed limits drop
+                self.velocity = max(self.velocity, target_speed)
+
 
         dist = self.velocity * dt
         if self.direction == "N":
