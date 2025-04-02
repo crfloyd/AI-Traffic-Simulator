@@ -19,11 +19,11 @@ class Grid:
 
         self.offset_x = (WINDOW_WIDTH - SIDEBAR_WIDTH - self.grid_width) // 2
         self.offset_y = (WINDOW_HEIGHT - self.grid_height) // 2
-        
+
         self.cars = []
         self.spawn_timer = 0.0
         self.spawn_interval = 0.6 if headless else 2.0   # seconds between spawns
-        
+
         self.total_wait_time = 0.0
         self.cars_processed = 0
         self.avg_wait_time = 0.0
@@ -34,6 +34,15 @@ class Grid:
             "vertical": {}     # key = (row, col) for NS roads
         }
 
+        for row in range(self.grid_size):
+            for col in range(self.grid_size - 1):
+                key = (row, col)
+                self.road_speed_limits["horizontal"][key] = random.choice([1.0, 0.75, 0.5])
+
+        for row in range(self.grid_size - 1):
+            for col in range(self.grid_size):
+                key = (row, col)
+                self.road_speed_limits["vertical"][key] = random.choice([1.0, 0.75, 0.5])
 
         self.intersections = []
         for row in range(self.grid_size):
@@ -42,8 +51,20 @@ class Grid:
                 cy = self.offset_y + row * CELL_SIZE + CELL_SIZE // 2
                 self.intersections.append(Intersection(col, row, cx, cy))
 
+    def get_speed_limit(self, car):
+        # Determine which road segment the car is on
+        if car.direction in ("E", "W"):
+            row = round((car.y - self.offset_y - CELL_SIZE // 2) / CELL_SIZE)
+            col = int((car.x - self.offset_x) // CELL_SIZE)
+            key = (row, col)
+            return self.road_speed_limits["horizontal"].get(key, 1.0)
+        else:
+            col = round((car.x - self.offset_x - CELL_SIZE // 2) / CELL_SIZE)
+            row = int((car.y - self.offset_y) // CELL_SIZE)
+            key = (row, col)
+            return self.road_speed_limits["vertical"].get(key, 1.0)
+
     def draw(self, screen, dt):
-        # Draw horizontal roads
         for row in range(self.grid_size):
             cy = self.offset_y + row * CELL_SIZE + CELL_SIZE // 2
             pygame.draw.rect(screen, (100, 100, 100), (
@@ -53,7 +74,6 @@ class Grid:
                 ROAD_WIDTH
             ))
 
-        # Draw vertical roads
         for col in range(self.grid_size):
             cx = self.offset_x + col * CELL_SIZE + CELL_SIZE // 2
             pygame.draw.rect(screen, (100, 100, 100), (
@@ -63,24 +83,19 @@ class Grid:
                 WINDOW_HEIGHT
             ))
 
-        # Reset per-intersection congestion counts
         for intersection in self.intersections:
             intersection.waiting_cars = 0
-
-        # Update and draw intersections
-        for intersection in self.intersections:
             intersection.update(dt)
             intersection.draw(screen)
 
-        # Update and draw cars
         for car in self.cars:
+            car.road_speed_factor = self.get_speed_limit(car)
             car.update(self.intersections, dt, self.cars)
             car.draw(screen)
             nearest = car.get_nearest_intersection(self.intersections)
             if car.state == "waiting" and nearest:
                 nearest.waiting_cars += 1
 
-        # Remove cars off-screen
         remaining_cars = []
         for c in self.cars:
             if -50 <= c.x <= WINDOW_WIDTH - SIDEBAR_WIDTH + 50 and -50 <= c.y <= WINDOW_HEIGHT + 50:
@@ -91,13 +106,11 @@ class Grid:
 
         self.cars = remaining_cars
 
-        # Avoid div by zero
         if self.cars_processed > 0:
             self.avg_wait_time = self.total_wait_time / self.cars_processed
         else:
             self.avg_wait_time = 0.0
 
-        # Spawn new cars
         self.spawn_timer += dt
         if self.headless:
             while self.spawn_timer >= self.spawn_interval:
@@ -108,7 +121,6 @@ class Grid:
                 self.spawn_car()
                 self.spawn_timer = 0
 
-        # Congestion metrics
         stopped_cars = sum(1 for c in self.cars if c.stopped_time > 10.0)
         queued_cars = len(self.cars)
         intersection_congestion = sum(i.waiting_cars for i in self.intersections)
@@ -120,10 +132,8 @@ class Grid:
             0.1 * heavy_congestion_penalty +
             0.05 * intersection_congestion
         )
-        self.total_congestion = sum(i.waiting_cars for i in self.intersections)
+        self.total_congestion = intersection_congestion
 
-
-            
     def spawn_car(self):
         edge = random.choice(["N", "S", "E", "W"])
 
@@ -148,26 +158,6 @@ class Grid:
             y = self.offset_y + row * CELL_SIZE + CELL_SIZE // 2
             direction = "W"
 
-        # Check if there's enough space in that lane
-        spawn_gap = 50  # You can tweak this if needed
-        for car in self.cars:
-            if car.direction != direction:
-                continue
-            if direction == "N" and abs(car.x - x) < 10 and car.y > y - spawn_gap:
-                return  # Block spawn
-            if direction == "S" and abs(car.x - x) < 10 and car.y < y + spawn_gap:
-                return
-            if direction == "E" and abs(car.y - y) < 10 and car.x < x + spawn_gap:
-                return
-            if direction == "W" and abs(car.y - y) < 10 and car.x > x - spawn_gap:
-                return
-
-        # If clear, spawn
-        from simulation.car import Car
         acceleration = random.uniform(40.0, 70.0)
-        max_speed = random.uniform(80.0, 100.0)
+        max_speed = random.uniform(100.0, 140.0)
         self.cars.append(Car(x, y, direction, max_speed=max_speed, acceleration=acceleration, initial_speed=max_speed))
-
-
-
-

@@ -3,8 +3,9 @@ import sys
 from simulation.grid import Grid
 from optimizer.controller import AnnealingController
 
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 800
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 1000
+
 BG_COLOR = (30, 30, 30)
 TEXT_COLOR = (255, 255, 255)
 
@@ -22,11 +23,13 @@ def draw_ui(screen, font, grid, controller):
     # Fonts
     header_font = pygame.font.SysFont("Arial", 20, bold=True)
     small_font = pygame.font.SysFont("Arial", 16)
+    screen_width = screen.get_width()
+    
 
     # Sidebar background
-    pygame.draw.rect(screen, (50, 50, 50), (WINDOW_WIDTH - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
+    pygame.draw.rect(screen, (50, 50, 50), (screen_width - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, screen.get_height()))
 
-    draw_x = WINDOW_WIDTH - SIDEBAR_WIDTH + SIDEBAR_PADDING
+    draw_x = screen_width - SIDEBAR_WIDTH + SIDEBAR_PADDING
     max_text_width = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING
 
     # Color-coded status
@@ -94,7 +97,7 @@ def draw_ui(screen, font, grid, controller):
         last_y = GRAPH_HEIGHT - int((points[-1] - min_val) / range_val * GRAPH_HEIGHT)
         pygame.draw.circle(graph_surface, (0, 255, 0), (GRAPH_WIDTH - 2, last_y), 2)
 
-        screen.blit(graph_surface, (draw_x, 400))
+        screen.blit(graph_surface, (draw_x, screen.get_height() - GRAPH_HEIGHT - 20))
 
 
 

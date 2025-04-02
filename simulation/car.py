@@ -33,8 +33,10 @@ class Car:
             return
         else:
             # Accelerate
+            target_speed = self.max_speed * getattr(self, 'road_speed_factor', 1.0)
             self.velocity += self.acceleration * dt
-            self.velocity = min(self.velocity, self.max_speed)
+            self.velocity = min(self.velocity, target_speed)
+
             self.state = "moving"
             self.stopped_time = 0.0
 
