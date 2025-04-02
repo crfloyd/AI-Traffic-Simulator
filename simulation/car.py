@@ -133,4 +133,15 @@ class Car:
             return self.x + self.length / 2
         elif self.direction == "W":
             return self.x - self.length / 2
+        
+    def get_nearest_intersection(self, intersections):
+        min_dist = float("inf")
+        nearest = None
+        for inter in intersections:
+            dist = math.hypot(self.x - inter.cx, self.y - inter.cy)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = inter
+        return nearest
+
 

@@ -1,5 +1,3 @@
-# simulation/grid.py
-
 import pygame
 import random
 from simulation.intersection import Intersection
@@ -31,6 +29,10 @@ class Grid:
         self.avg_wait_time = 0.0
         self.fitness = 0.0
 
+        self.road_speed_limits = {
+            "horizontal": {},  # key = (row, col) for EW roads
+            "vertical": {}     # key = (row, col) for NS roads
+        }
 
 
         self.intersections = []
@@ -58,8 +60,12 @@ class Grid:
                 cx - ROAD_WIDTH // 2,
                 0,
                 ROAD_WIDTH,
-            WINDOW_HEIGHT
-        ))
+                WINDOW_HEIGHT
+            ))
+
+        # Reset per-intersection congestion counts
+        for intersection in self.intersections:
+            intersection.waiting_cars = 0
 
         # Update and draw intersections
         for intersection in self.intersections:
@@ -70,6 +76,9 @@ class Grid:
         for car in self.cars:
             car.update(self.intersections, dt, self.cars)
             car.draw(screen)
+            nearest = car.get_nearest_intersection(self.intersections)
+            if car.state == "waiting" and nearest:
+                nearest.waiting_cars += 1
 
         # Remove cars off-screen
         remaining_cars = []
@@ -81,7 +90,6 @@ class Grid:
                 self.cars_processed += 1
 
         self.cars = remaining_cars
-        
 
         # Avoid div by zero
         if self.cars_processed > 0:
@@ -89,32 +97,31 @@ class Grid:
         else:
             self.avg_wait_time = 0.0
 
-
         # Spawn new cars
         self.spawn_timer += dt
         if self.headless:
-            # Spawn as many cars as needed in a tight loop
-            while self.spawn_timer >= self.spawn_interval: 
-                # print("Spawning a car in headless mode...")
+            while self.spawn_timer >= self.spawn_interval:
                 self.spawn_car()
                 self.spawn_timer -= self.spawn_interval
         else:
             if self.spawn_timer >= self.spawn_interval:
-                # print("Spawning a car in UI mode...")
                 self.spawn_car()
                 self.spawn_timer = 0
 
-            
         # Congestion metrics
         stopped_cars = sum(1 for c in self.cars if c.stopped_time > 10.0)
         queued_cars = len(self.cars)
+        intersection_congestion = sum(i.waiting_cars for i in self.intersections)
         heavy_congestion_penalty = max(0, queued_cars - 20)
 
         self.fitness = (
             0.5 * self.avg_wait_time +
             2.0 * stopped_cars +
-            0.1 * heavy_congestion_penalty
+            0.1 * heavy_congestion_penalty +
+            0.05 * intersection_congestion
         )
+        self.total_congestion = sum(i.waiting_cars for i in self.intersections)
+
 
             
     def spawn_car(self):
