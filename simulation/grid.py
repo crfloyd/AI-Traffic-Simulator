@@ -3,18 +3,18 @@ import random
 from simulation.intersection import Intersection
 from simulation.car import Car
 
-GRID_ROWS = 3  # Vertical roads
-GRID_COLS = 5  # Horizontal roads (more to simulate main arteries)
+GRID_ROWS = 4
+GRID_COLS = 5
 ROAD_WIDTH = 40
 SIDEBAR_WIDTH = 200
 CAR_SPEED = 140
 CAR_ACCEL = 50
+SCREEN_MARGIN = 60
 
 class Grid:
     def __init__(self, headless=False):
         self.headless = headless
 
-        # Get current display size for dynamic layout
         info = pygame.display.Info()
         self.window_width = info.current_w
         self.window_height = info.current_h
@@ -22,11 +22,19 @@ class Grid:
         self.grid_width = self.window_width - SIDEBAR_WIDTH
         self.grid_height = self.window_height
 
-        self.cell_width = self.grid_width // GRID_COLS
-        self.cell_height = self.grid_height // GRID_ROWS
+        self.col_positions = self.compute_positions(
+            GRID_COLS,
+            left=SCREEN_MARGIN,
+            right=self.window_width - SIDEBAR_WIDTH - SCREEN_MARGIN
+        )
 
-        self.offset_x = (self.grid_width - self.cell_width * GRID_COLS) // 2
-        self.offset_y = (self.grid_height - self.cell_height * GRID_ROWS) // 2
+        self.row_positions = self.compute_positions(
+            GRID_ROWS,
+            top=SCREEN_MARGIN,
+            bottom=self.window_height - SCREEN_MARGIN
+        )
+
+
 
         self.cars = []
         self.spawn_timer = 0.0
@@ -44,50 +52,67 @@ class Grid:
 
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS - 1):
-                self.road_speed_limits["horizontal"][(row, col)] = 1.0  # Fast road
-
+                self.road_speed_limits["horizontal"][(row, col)] = 1.0
         for row in range(GRID_ROWS - 1):
             for col in range(GRID_COLS):
-                self.road_speed_limits["vertical"][(row, col)] = 0.5  # Slower road
+                self.road_speed_limits["vertical"][(row, col)] = 0.5
 
         self.intersections = []
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS):
-                cx = self.offset_x + col * self.cell_width + self.cell_width // 2
-                cy = self.offset_y + row * self.cell_height + self.cell_height // 2
-                self.intersections.append(Intersection(col, row, cx, cy))
+                cx = self.col_positions[col]
+                cy = self.row_positions[row]
+                self.intersections.append(Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS))
+
+
+    def compute_positions(self, count, left=None, right=None, top=None, bottom=None):
+        if left is not None and right is not None:
+            spacing = (right - left) / (count - 1)
+            return [left + i * spacing for i in range(count)]
+        elif top is not None and bottom is not None:
+            spacing = (bottom - top) / (count - 1)
+            return [top + i * spacing for i in range(count)]
+        else:
+            raise ValueError("Must specify left/right or top/bottom bounds.")
+
+
+
 
     def get_speed_limit(self, car):
         if car.direction in ("E", "W"):
-            row = round((car.y - self.offset_y - self.cell_height // 2) / self.cell_height)
-            col = int((car.x - self.offset_x) // self.cell_width)
+            row = min(range(GRID_ROWS), key=lambda r: abs(car.y - self.row_positions[r]))
+            col = max(0, min(GRID_COLS - 2, sum(car.x > cp for cp in self.col_positions) - 1))
             return self.road_speed_limits["horizontal"].get((row, col), 1.0)
         else:
-            col = round((car.x - self.offset_x - self.cell_width // 2) / self.cell_width)
-            row = int((car.y - self.offset_y) // self.cell_height)
+            col = min(range(GRID_COLS), key=lambda c: abs(car.x - self.col_positions[c]))
+            row = max(0, min(GRID_ROWS - 2, sum(car.y > rp for rp in self.row_positions) - 1))
             return self.road_speed_limits["vertical"].get((row, col), 1.0)
 
     def draw(self, screen, dt):
-        for row in range(GRID_ROWS):
-            cy = self.offset_y + row * self.cell_height + self.cell_height // 2
+        # Draw horizontal roads using row_positions
+        for cy in self.row_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
-                self.offset_x,
-                cy - ROAD_WIDTH // 2,
-                self.grid_width,
+                self.col_positions[0],                # Start drawing at first column
+                cy - ROAD_WIDTH // 2,                 # Vertical center
+                self.col_positions[-1] - self.col_positions[0],  # Total road width
                 ROAD_WIDTH
             ))
 
-        for col in range(GRID_COLS):
-            cx = self.offset_x + col * self.cell_width + self.cell_width // 2
+        # Draw vertical roads using col_positions
+        for cx in self.col_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
                 cx - ROAD_WIDTH // 2,
-                0,
+                self.row_positions[0],                # Start drawing at topmost row
                 ROAD_WIDTH,
-                self.grid_height
+                self.row_positions[-1] - self.row_positions[0]   # Total road height
             ))
 
+        # Reset per-intersection congestion counts
         for inter in self.intersections:
             inter.waiting_cars = 0
+
+        # Update and draw intersections
+        for inter in self.intersections:
             inter.update(dt)
             inter.draw(screen)
 
@@ -108,10 +133,7 @@ class Grid:
                 self.cars_processed += 1
         self.cars = remaining
 
-        if self.cars_processed > 0:
-            self.avg_wait_time = self.total_wait_time / self.cars_processed
-        else:
-            self.avg_wait_time = 0.0
+        self.avg_wait_time = self.total_wait_time / self.cars_processed if self.cars_processed > 0 else 0.0
 
         self.spawn_timer += dt
         if self.headless:
@@ -140,24 +162,16 @@ class Grid:
         edge = random.choices(["N", "S", "E", "W"], weights=[1, 1, 3, 3])[0]
 
         if edge == "N":
-            col = random.choice(range(GRID_COLS))
-            x = self.offset_x + col * self.cell_width + self.cell_width // 2
-            y = self.window_height
-            direction = "N"
+            col = random.choice(self.col_positions)
+            x, y, d = col, self.window_height, "N"
         elif edge == "S":
-            col = random.choice(range(GRID_COLS))
-            x = self.offset_x + col * self.cell_width + self.cell_width // 2
-            y = 0
-            direction = "S"
+            col = random.choice(self.col_positions)
+            x, y, d = col, 0, "S"
         elif edge == "E":
-            row = random.choice(range(GRID_ROWS))
-            x = 0
-            y = self.offset_y + row * self.cell_height + self.cell_height // 2
-            direction = "E"
+            row = random.choice(self.row_positions)
+            x, y, d = 0, row, "E"
         elif edge == "W":
-            row = random.choice(range(GRID_ROWS))
-            x = self.window_width - SIDEBAR_WIDTH
-            y = self.offset_y + row * self.cell_height + self.cell_height // 2
-            direction = "W"
+            row = random.choice(self.row_positions)
+            x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
 
-        self.cars.append(Car(x, y, direction, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+        self.cars.append(Car(x, y, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))

@@ -19,10 +19,22 @@ class Car:
         self.stopped_time = 0.0
         self.length = CAR_LENGTH
         self.width = CAR_WIDTH
+        self.spawn_x = x
+        self.spawn_y = y
+        self.entered_grid = False
 
 
     def update(self, intersections, dt, cars):
-        near_intersection = any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
+        # Check if car has moved far enough to start obeying intersections
+        if not self.entered_grid:
+            dist_from_start = math.hypot(self.x - self.spawn_x, self.y - self.spawn_y)
+            if dist_from_start > 100:
+                self.entered_grid = True
+                
+        near_intersection = (
+            self.entered_grid and 
+            any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
+        )
 
         if near_intersection or self.car_blocking_ahead(cars):
             # Stop if there's a red light or car blocking

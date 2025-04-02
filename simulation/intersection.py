@@ -6,12 +6,15 @@ import random
 LIGHT_SIZE = 20
 
 class Intersection:
-    def __init__(self, grid_x, grid_y, cx, cy):
-        self.grid_x = grid_x
-        self.grid_y = grid_y
+    def __init__(self, grid_x, grid_y, cx, cy, num_rows, num_cols):
+        self.col = grid_x
+        self.row = grid_y
         self.cx = cx
         self.cy = cy
         self.rect = pygame.Rect(cx - 20, cy - 20, 40, 40)
+
+        self.num_rows = num_rows
+        self.num_cols = num_cols
 
         self.phase = 'NS'
         self.last_phase = 'NS'
@@ -32,8 +35,8 @@ class Intersection:
     def update(self, dt):
         self.elapsed += dt
         
-        if self.elapsed == 0:  # Light just changed
-            print(f"[{self.grid_x}, {self.grid_y}] -> Phase changed to {self.phase}")
+        # if self.elapsed == 0:  # Light just changed
+        #     print(f"[{self.grid_x}, {self.grid_y}] -> Phase changed to {self.phase}")
 
 
         if self.phase == 'NS' and self.elapsed >= self.ns_duration:
@@ -60,32 +63,24 @@ class Intersection:
         return 'EW' if self.phase == 'NS' else 'NS'
 
     def draw(self, screen):
-        # Draw intersection block
-        pygame.draw.rect(screen, (160, 160, 160), (
-            self.cx - 20,
-            self.cy - 20,
-            40,
-            40
-        ))
+        # Intersection box
+        pygame.draw.rect(screen, (150, 150, 150), (self.cx - 20, self.cy - 20, 40, 40))
 
-        # Show lights depending on current phase
-        if self.phase == 'ALL_RED':
-            ns_color = (255, 0, 0)
-            ew_color = (255, 0, 0)
-        elif self.phase == 'NS':
-            ns_color = (0, 255, 0)
-            ew_color = (255, 0, 0)
-        else:  # 'EW'
-            ns_color = (255, 0, 0)
-            ew_color = (0, 255, 0)
-        
-        if self.just_updated:
-            pygame.draw.rect(screen, (255, 255, 100), self.rect.inflate(6, 6), border_radius=8)
+        # RED = (255, 0, 0), GREEN = (0, 255, 0)
+        ns_color = (0, 255, 0) if self.phase == "NS" else (255, 0, 0)
+        ew_color = (0, 255, 0) if self.phase == "EW" else (255, 0, 0)
 
-        pygame.draw.circle(screen, ns_color, (self.cx, self.cy - 25), LIGHT_SIZE // 2)
-        pygame.draw.circle(screen, ns_color, (self.cx, self.cy + 25), LIGHT_SIZE // 2)
-        pygame.draw.circle(screen, ew_color, (self.cx - 25, self.cy), LIGHT_SIZE // 2)
-        pygame.draw.circle(screen, ew_color, (self.cx + 25, self.cy), LIGHT_SIZE // 2)
+        # Draw vertical lights (north/south)
+        if self.row > 0:  # Show north light only if not in top row
+            pygame.draw.circle(screen, ns_color, (self.cx, self.cy - 30), 6)
+        if self.row < self.num_rows - 1:  # Show south light only if not in bottom row
+            pygame.draw.circle(screen, ns_color, (self.cx, self.cy + 30), 6)
+
+        # Draw horizontal lights (east/west)
+        if self.col > 0:  # Show west light only if not in first column
+            pygame.draw.circle(screen, ew_color, (self.cx - 30, self.cy), 6)
+        if self.col < self.num_cols - 1:  # Show east light only if not in last column
+            pygame.draw.circle(screen, ew_color, (self.cx + 30, self.cy), 6)
 
     def mark_updated(self):
         self.just_updated = True

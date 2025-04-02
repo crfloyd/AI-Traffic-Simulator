@@ -24,7 +24,7 @@ def draw_ui(screen, font, grid, controller):
     header_font = pygame.font.SysFont("Arial", 20, bold=True)
     small_font = pygame.font.SysFont("Arial", 16)
     screen_width = screen.get_width()
-    
+
 
     # Sidebar background
     pygame.draw.rect(screen, (50, 50, 50), (screen_width - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, screen.get_height()))
@@ -76,13 +76,13 @@ def draw_ui(screen, font, grid, controller):
 
     # Fitness graph
     points = debug.get("fitness_history", [])
+    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
+    graph_surface.fill((20, 20, 20))
+
     if len(points) > 1:
         max_val = max(points)
         min_val = min(points)
         range_val = max(max_val - min_val, 0.05)
-
-        graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
-        graph_surface.fill((20, 20, 20))
 
         for i in range(len(points) - 1):
             x1 = i * GRAPH_WIDTH // (len(points) - 1)
@@ -96,13 +96,15 @@ def draw_ui(screen, font, grid, controller):
 
         last_y = GRAPH_HEIGHT - int((points[-1] - min_val) / range_val * GRAPH_HEIGHT)
         pygame.draw.circle(graph_surface, (0, 255, 0), (GRAPH_WIDTH - 2, last_y), 2)
+    else:
+        placeholder_font = pygame.font.SysFont("Arial", 14)
+        msg = placeholder_font.render("Waiting for data...", True, (150, 150, 150))
+        graph_surface.blit(msg, (10, GRAPH_HEIGHT // 2 - msg.get_height() // 2))
 
-        screen.blit(graph_surface, (draw_x, screen.get_height() - GRAPH_HEIGHT - 20))
+    screen.blit(graph_surface, (draw_x, y))
 
 
-
-
-
+        
 
 def main():
     global SIM_SPEED  # make speed adjustable
