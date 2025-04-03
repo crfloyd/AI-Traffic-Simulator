@@ -104,7 +104,6 @@ def draw_ui(screen, font, grid, controller):
     screen.blit(graph_surface, (draw_x, y))
 
 
-        
 
 def main():
     global SIM_SPEED  # make speed adjustable

@@ -30,7 +30,7 @@ class Car:
             dist_from_start = math.hypot(self.x - self.spawn_x, self.y - self.spawn_y)
             if dist_from_start > 100:
                 self.entered_grid = True
-                
+
         near_intersection = (
             self.entered_grid and 
             any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
@@ -102,8 +102,8 @@ class Car:
             if not self.is_in_same_lane(other):
                 continue
             edge_gap = self.edge_distance_to(other)
-            if self.state == "waiting":
-                if edge_gap < CAR_START_GAP:  # distance needed to *start moving*
+            if other.state == "waiting":
+                if edge_gap < CAR_START_GAP:
                     return True
             else:
                 if edge_gap < CAR_STOP_GAP:  # distance needed to *stop*

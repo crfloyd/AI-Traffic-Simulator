@@ -34,8 +34,6 @@ class Grid:
             bottom=self.window_height - SCREEN_MARGIN
         )
 
-
-
         self.cars = []
         self.spawn_timer = 0.0
         self.spawn_interval = 0.6 if headless else 2.0
@@ -62,8 +60,11 @@ class Grid:
             for col in range(GRID_COLS):
                 cx = self.col_positions[col]
                 cy = self.row_positions[row]
-                self.intersections.append(Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS))
-
+                inter = Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS)
+                inter.waiting_cars = 0
+                inter.waiting_time_total = 0.0
+                inter.congestion_heat = 0.0
+                self.intersections.append(inter)
 
     def compute_positions(self, count, left=None, right=None, top=None, bottom=None):
         if left is not None and right is not None:
@@ -74,9 +75,6 @@ class Grid:
             return [top + i * spacing for i in range(count)]
         else:
             raise ValueError("Must specify left/right or top/bottom bounds.")
-
-
-
 
     def get_speed_limit(self, car):
         if car.direction in ("E", "W"):
@@ -89,29 +87,22 @@ class Grid:
             return self.road_speed_limits["vertical"].get((row, col), 1.0)
 
     def draw(self, screen, dt):
-        # Draw horizontal roads using row_positions
         for cy in self.row_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
-                self.col_positions[0],                # Start drawing at first column
-                cy - ROAD_WIDTH // 2,                 # Vertical center
-                self.col_positions[-1] - self.col_positions[0],  # Total road width
+                self.col_positions[0],
+                cy - ROAD_WIDTH // 2,
+                self.col_positions[-1] - self.col_positions[0],
                 ROAD_WIDTH
             ))
 
-        # Draw vertical roads using col_positions
         for cx in self.col_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
                 cx - ROAD_WIDTH // 2,
-                self.row_positions[0],                # Start drawing at topmost row
+                self.row_positions[0],
                 ROAD_WIDTH,
-                self.row_positions[-1] - self.row_positions[0]   # Total road height
+                self.row_positions[-1] - self.row_positions[0]
             ))
 
-        # Reset per-intersection congestion counts
-        for inter in self.intersections:
-            inter.waiting_cars = 0
-
-        # Update and draw intersections
         for inter in self.intersections:
             inter.update(dt)
             inter.draw(screen)
@@ -123,6 +114,23 @@ class Grid:
             nearest = car.get_nearest_intersection(self.intersections)
             if car.state == "waiting" and nearest:
                 nearest.waiting_cars += 1
+                nearest.waiting_time_total += dt
+
+        for inter in self.intersections:
+            congestion_signal = inter.waiting_cars + inter.waiting_time_total
+            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.98 + congestion_signal * dt * 2)
+
+            if inter.congestion_heat > 2.0:
+                intensity = min(150, int(inter.congestion_heat * 10))
+                glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
+                screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+
+        # Intersections should draw after cars now
+        for inter in self.intersections:
+            inter.waiting_cars = 0
+            inter.waiting_time_total = 0.0
+            # inter.draw(screen)
 
         remaining = []
         for c in self.cars:
@@ -145,16 +153,21 @@ class Grid:
                 self.spawn_car()
                 self.spawn_timer = 0
 
-        stopped = sum(1 for c in self.cars if c.stopped_time > 10.0)
+        mildly_stopped = sum(1 for c in self.cars if c.stopped_time > 10.0)
+        severely_stopped = sum(1 for c in self.cars if c.stopped_time > 20.0)
         queued = len(self.cars)
         intersection_congestion = sum(i.waiting_cars for i in self.intersections)
+        intersection_wait_penalty = sum(i.waiting_time_total for i in self.intersections)
         heavy_congestion_penalty = max(0, queued - 20)
 
         self.fitness = (
-            0.5 * self.avg_wait_time +
-            2.0 * stopped +
-            0.1 * heavy_congestion_penalty +
-            0.05 * intersection_congestion
+            0.4 * self.avg_wait_time +
+            1.0 * mildly_stopped +
+            3.0 * severely_stopped +
+            0.15 * heavy_congestion_penalty +
+            0.05 * intersection_congestion +
+            0.02 * intersection_wait_penalty -
+            0.05 * self.cars_processed
         )
         self.total_congestion = intersection_congestion
 

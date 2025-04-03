@@ -27,6 +27,7 @@ class Intersection:
         self.just_updated = False
         self.updated_timer = 0.0
         self.waiting_cars = 0
+        self.waiting_time_total = 0.0  # Total wait time of cars near this intersection in this run
 
         self.queues = {"N": 0, "S": 0, "E": 0, "W": 0}
 
@@ -85,3 +86,7 @@ class Intersection:
     def mark_updated(self):
         self.just_updated = True
         self.updated_timer = 1.5  # seconds
+
+    def reset(self):
+        self.waiting_cars = 0
+        self.waiting_time_total = 0.0
