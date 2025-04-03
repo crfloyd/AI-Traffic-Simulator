@@ -22,9 +22,12 @@ class Car:
         self.spawn_x = x
         self.spawn_y = y
         self.entered_grid = False
+        self.age = 0.0
 
 
     def update(self, intersections, dt, cars):
+        self.age += dt
+
         # Check if car has moved far enough to start obeying intersections
         if not self.entered_grid:
             dist_from_start = math.hypot(self.x - self.spawn_x, self.y - self.spawn_y)
@@ -95,6 +98,7 @@ class Car:
             return True
         return False
 
+
     def car_blocking_ahead(self, cars):
         for other in cars:
             if other is self:
@@ -102,13 +106,15 @@ class Car:
             if not self.is_in_same_lane(other):
                 continue
             edge_gap = self.edge_distance_to(other)
-            if other.state == "waiting":
-                if edge_gap < CAR_START_GAP:
+
+            if self.state == "waiting":
+                if edge_gap < CAR_STOP_GAP:
                     return True
             else:
-                if edge_gap < CAR_STOP_GAP:  # distance needed to *stop*
+                if edge_gap < CAR_START_GAP:
                     return True
         return False
+
 
     
 

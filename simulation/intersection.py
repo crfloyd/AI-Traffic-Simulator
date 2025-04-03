@@ -17,12 +17,10 @@ class Intersection:
         self.num_cols = num_cols
 
         self.phase = 'NS'
-        self.last_phase = 'NS'
         self.elapsed = random.uniform(0, 5)  # ✨ Desync phase start time
 
         self.ns_duration = 5
         self.ew_duration = 5
-        self.all_red_duration = 1
 
         self.just_updated = False
         self.updated_timer = 0.0
@@ -41,15 +39,10 @@ class Intersection:
 
 
         if self.phase == 'NS' and self.elapsed >= self.ns_duration:
-            self.phase = 'ALL_RED'
-            self.last_phase = 'NS'
+            self.phase = 'EW'
             self.elapsed = 0
         elif self.phase == 'EW' and self.elapsed >= self.ew_duration:
-            self.phase = 'ALL_RED'
-            self.last_phase = 'EW'
-            self.elapsed = 0
-        elif self.phase == 'ALL_RED' and self.elapsed >= self.all_red_duration:
-            self.phase = 'EW' if self.last_phase == 'NS' else 'NS'
+            self.phase = 'NS'
             self.elapsed = 0
             
         if self.just_updated:

@@ -15,6 +15,8 @@ GRAPH_HEIGHT = 100
 GRAPH_WIDTH = 180
 
 
+
+
 SIM_SPEED = 1.0  # default time scale
 
 def draw_ui(screen, font, grid, controller):
@@ -106,6 +108,9 @@ def draw_ui(screen, font, grid, controller):
 
 
 def main():
+
+    notification_text = ""
+    notification_timer = 0.0
     global SIM_SPEED  # make speed adjustable
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -132,12 +137,35 @@ def main():
                 elif event.key == pygame.K_MINUS:
                     SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
 
+        # Show notification if a new best config was applied
+        if controller.status_message == controller.STATUS_BEST_APPLIED:
+            if notification_timer <= 0:  # Only trigger once
+                print(f"Notification: {controller.status_message}")
+                notification_text = controller.status_message
+                notification_timer = 2.5  # show for 2.5 seconds
+                controller.status_message = controller.STATUS_WAITING
 
         controller.update(dt, grid)
+
+
 
         screen.fill(BG_COLOR)
         grid.draw(screen, dt)
         draw_ui(screen, font, grid, controller)
+        if notification_timer > 0:
+            print(f"Notification: {notification_text}")
+            notification_timer -= dt
+            alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
+            notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
+            notif_surface.fill((0, 0, 0, 180))
+            font_big = pygame.font.SysFont("Arial", 24, bold=True)
+            text = font_big.render(notification_text, True, (255, 255, 255))
+            notif_surface.blit(text, (250 - text.get_width() // 2, 10))
+            notif_surface.set_alpha(alpha)
+            sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
+            text_rect = notif_surface.get_rect(center=(sim_width // 2, WINDOW_HEIGHT // 2))
+            screen.blit(notif_surface, text_rect)
+
         pygame.display.flip()
 
     pygame.quit()

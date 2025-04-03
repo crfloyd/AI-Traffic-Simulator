@@ -10,6 +10,9 @@ SIDEBAR_WIDTH = 200
 CAR_SPEED = 140
 CAR_ACCEL = 50
 SCREEN_MARGIN = 60
+HEAVY_CONGESTION_THRESHOLD = 15
+SPILLOVER_THRESHOLD = 5
+
 
 class Grid:
     def __init__(self, headless=False):
@@ -36,7 +39,7 @@ class Grid:
 
         self.cars = []
         self.spawn_timer = 0.0
-        self.spawn_interval = 0.6 if headless else 2.0
+        self.spawn_interval = 1 if headless else 1
 
         self.total_wait_time = 0.0
         self.cars_processed = 0
@@ -63,6 +66,8 @@ class Grid:
                 inter = Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS)
                 inter.waiting_cars = 0
                 inter.waiting_time_total = 0.0
+                inter.prev_waiting_cars = 0
+                inter.prev_waiting_time = 0.0
                 inter.congestion_heat = 0.0
                 self.intersections.append(inter)
 
@@ -126,11 +131,11 @@ class Grid:
                 pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
                 screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
 
-        # Intersections should draw after cars now
         for inter in self.intersections:
+            inter.prev_waiting_cars = inter.waiting_cars
+            inter.prev_waiting_time = inter.waiting_time_total
             inter.waiting_cars = 0
             inter.waiting_time_total = 0.0
-            # inter.draw(screen)
 
         remaining = []
         for c in self.cars:
@@ -156,9 +161,16 @@ class Grid:
         mildly_stopped = sum(1 for c in self.cars if c.stopped_time > 10.0)
         severely_stopped = sum(1 for c in self.cars if c.stopped_time > 20.0)
         queued = len(self.cars)
-        intersection_congestion = sum(i.waiting_cars for i in self.intersections)
-        intersection_wait_penalty = sum(i.waiting_time_total for i in self.intersections)
-        heavy_congestion_penalty = max(0, queued - 20)
+        intersection_congestion = sum(i.prev_waiting_cars for i in self.intersections)
+        intersection_wait_penalty = sum(i.prev_waiting_time for i in self.intersections)
+        heavy_congestion_penalty = max(0, queued - HEAVY_CONGESTION_THRESHOLD)
+
+        car_weight = 0.05
+        time_weight = 0.02
+        norm_waiting_cars = sum(i.prev_waiting_cars * car_weight for i in self.intersections)
+        norm_waiting_time = sum(i.prev_waiting_time * time_weight for i in self.intersections)
+        avg_age = sum(c.age for c in self.cars) / len(self.cars) if self.cars else 0
+        spillovers = sum(1 for i in self.intersections if i.prev_waiting_cars > SPILLOVER_THRESHOLD)
 
         self.fitness = (
             0.4 * self.avg_wait_time +
@@ -166,8 +178,12 @@ class Grid:
             3.0 * severely_stopped +
             0.15 * heavy_congestion_penalty +
             0.05 * intersection_congestion +
-            0.02 * intersection_wait_penalty -
-            0.05 * self.cars_processed
+            0.02 * intersection_wait_penalty +
+            norm_waiting_cars +
+            norm_waiting_time -
+            0.05 * self.cars_processed + 
+            0.1 * avg_age +
+            0.3 * spillovers
         )
         self.total_congestion = intersection_congestion
 
