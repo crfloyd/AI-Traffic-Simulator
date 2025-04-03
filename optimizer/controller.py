@@ -10,7 +10,7 @@ class AnnealingController:
     STATUS_OPTIMIZATION_DONE = "Optimization complete"
     STATUS_REJECTED = "Rejected: gridlock"
     STATUS_APPLYING = "Applying new config..."
-    STATUS_BEST_INITIALIZED = "🔄 UI reset: Best config initialized"
+    STATUS_BEST_INITIALIZED = "UI reset: Best config initialized"
     STATUS_BEST_APPLIED = "🌟 New best config applied"
     STATUS_WAITING = "Waiting for next mutation..."
     STATUS_EVALUATING = "Evaluating new config..."
@@ -20,8 +20,11 @@ class AnnealingController:
         self.T = T_start
         self.T_min = T_min
         self.alpha = alpha
-        self.interval = run_interval  # 🔧 Controls delay between mutations
+        self.interval = run_interval  # Controls delay between mutations
         self.timer = 0.0
+        self.optimization_locked = False
+        self.show_heatmap = True
+
 
         grid = Grid(headless=True)
 
@@ -77,12 +80,16 @@ class AnnealingController:
         return int(20 + (90 - 20) * (1 - (temp - self.T_min) / (100 - self.T_min)))
 
     def update(self, dt, grid):
+        if self.status_message == self.STATUS_OPTIMIZATION_DONE:
+            return
+
         self.timer += dt
 
-        if self.T <= self.T_min and not self.eval_thread and self.status_message != self.STATUS_OPTIMIZATION_DONE:
+        if self.T <= self.T_min and not self.eval_thread and not self.optimization_locked:
             print("🌡️ Optimization complete — locking best config")
             self.current_config = self.best_config
             self.status_message = self.STATUS_OPTIMIZATION_DONE
+            self.optimization_locked = True 
 
             for inter, cfg in zip(grid.intersections, self.best_config):
                 inter.ns_duration = cfg["ns_duration"]
@@ -144,7 +151,9 @@ class AnnealingController:
                 else:
                     print("❌ Rejected new config")
 
-                self.T *= self.alpha
+                if self.status_message != self.STATUS_OPTIMIZATION_DONE:
+                    self.T *= self.alpha
+
 
             self.last_throughput = new_throughput
             self.last_cars_processed = cars_processed

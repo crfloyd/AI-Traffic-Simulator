@@ -39,7 +39,7 @@ class Grid:
 
         self.cars = []
         self.spawn_timer = 0.0
-        self.spawn_interval = 1 if headless else 1
+        self.spawn_interval = 0.5 if headless else 1
 
         self.total_wait_time = 0.0
         self.cars_processed = 0
@@ -91,7 +91,7 @@ class Grid:
             row = max(0, min(GRID_ROWS - 2, sum(car.y > rp for rp in self.row_positions) - 1))
             return self.road_speed_limits["vertical"].get((row, col), 1.0)
 
-    def draw(self, screen, dt):
+    def draw(self, screen, dt, show_heatmap=True):
         for cy in self.row_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
                 self.col_positions[0],
@@ -123,13 +123,14 @@ class Grid:
 
         for inter in self.intersections:
             congestion_signal = inter.waiting_cars + inter.waiting_time_total
-            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.98 + congestion_signal * dt * 2)
+            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.58 + congestion_signal * dt * 2)
 
             if inter.congestion_heat > 2.0:
                 intensity = min(150, int(inter.congestion_heat * 10))
                 glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
-                screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+                if show_heatmap:
+                    pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
+                    screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
 
         for inter in self.intersections:
             inter.prev_waiting_cars = inter.waiting_cars
@@ -171,6 +172,9 @@ class Grid:
         norm_waiting_time = sum(i.prev_waiting_time * time_weight for i in self.intersections)
         avg_age = sum(c.age for c in self.cars) / len(self.cars) if self.cars else 0
         spillovers = sum(1 for i in self.intersections if i.prev_waiting_cars > SPILLOVER_THRESHOLD)
+        low_throughput_penalty = 0.0
+        if self.cars_processed < 10:
+            low_throughput_penalty = 5.0
 
         self.fitness = (
             0.4 * self.avg_wait_time +
@@ -183,7 +187,8 @@ class Grid:
             norm_waiting_time -
             0.05 * self.cars_processed + 
             0.1 * avg_age +
-            0.3 * spillovers
+            0.3 * spillovers +
+            low_throughput_penalty
         )
         self.total_congestion = intersection_congestion
 

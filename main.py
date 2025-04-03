@@ -8,18 +8,19 @@ WINDOW_HEIGHT = 1000
 
 BG_COLOR = (30, 30, 30)
 TEXT_COLOR = (255, 255, 255)
+COLOR_GREEN = (10, 255, 0)
 
 SIDEBAR_WIDTH = 200
 SIDEBAR_PADDING = 10
 GRAPH_HEIGHT = 100
 GRAPH_WIDTH = 180
 
-
+HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 30)
 
 
 SIM_SPEED = 1.0  # default time scale
 
-def draw_ui(screen, font, grid, controller):
+def draw_ui(screen, font, grid, controller, show_heatmap):
     debug = controller.get_debug_info()
 
     # Fonts
@@ -40,6 +41,8 @@ def draw_ui(screen, font, grid, controller):
         status_color = (255, 215, 0)  # yellow
     elif "Applying" in status:
         status_color = (100, 255, 100)  # green
+    elif "Optimization complete" in status:
+        status_color = (100, 245, 100)  # green
     else:
         status_color = TEXT_COLOR
 
@@ -62,6 +65,7 @@ def draw_ui(screen, font, grid, controller):
         (small_font, f"Sim Speed: {SIM_SPEED:.1f}x", TEXT_COLOR),
         (small_font, "", TEXT_COLOR),
         (header_font, "Fitness Trend", TEXT_COLOR),
+
     ]
 
     y = 20
@@ -75,6 +79,7 @@ def draw_ui(screen, font, grid, controller):
 
         screen.blit(label_surface, (draw_x, y))
         y += font_type.get_linesize() + 4
+
 
     # Fitness graph
     points = debug.get("fitness_history", [])
@@ -106,6 +111,17 @@ def draw_ui(screen, font, grid, controller):
     screen.blit(graph_surface, (draw_x, y))
 
 
+    # Draw the heatmap toggle button
+    toggle_color = (100, 200, 100) if show_heatmap else (200, 100, 100)
+    pygame.draw.rect(screen, toggle_color, HEATMAP_TOGGLE_RECT, border_radius=6)
+
+    toggle_font = pygame.font.SysFont("Arial", 16, bold=True)
+    toggle_label = "Heatmap: ON" if show_heatmap else "Heatmap: OFF"
+    text_surface = toggle_font.render(toggle_label, True, (0, 0, 0))
+    text_rect = text_surface.get_rect(center=HEATMAP_TOGGLE_RECT.center)
+    screen.blit(text_surface, text_rect)
+
+
 
 def main():
 
@@ -116,6 +132,7 @@ def main():
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Traffic Flow Optimization")
     clock = pygame.time.Clock()
+    show_heatmap = False
 
     font = pygame.font.SysFont("Arial", 20)
     grid = Grid()
@@ -123,6 +140,7 @@ def main():
     controller = AnnealingController()
 
     running = True
+    last_status_message = None
 
     while running:
         dt = clock.tick(60) / 1000.0  # Delta time in seconds
@@ -133,27 +151,31 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
-                    SIM_SPEED = min(5.0, SIM_SPEED + 0.5)
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
                 elif event.key == pygame.K_MINUS:
                     SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif event.key == pygame.K_h:
+                    show_heatmap = not show_heatmap
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if HEATMAP_TOGGLE_RECT.collidepoint(event.pos):
+                    show_heatmap = not show_heatmap
+
 
         # Show notification if a new best config was applied
-        if controller.status_message == controller.STATUS_BEST_APPLIED:
-            if notification_timer <= 0:  # Only trigger once
+        if controller.status_message != last_status_message:
+            if controller.status_message == controller.STATUS_BEST_APPLIED:
                 print(f"Notification: {controller.status_message}")
                 notification_text = controller.status_message
-                notification_timer = 2.5  # show for 2.5 seconds
-                controller.status_message = controller.STATUS_WAITING
+                notification_timer = 2.5
+            last_status_message = controller.status_message
 
         controller.update(dt, grid)
 
-
-
         screen.fill(BG_COLOR)
-        grid.draw(screen, dt)
-        draw_ui(screen, font, grid, controller)
+        grid.draw(screen, dt, show_heatmap=show_heatmap)
+        draw_ui(screen, font, grid, controller, show_heatmap)
         if notification_timer > 0:
-            print(f"Notification: {notification_text}")
+            # print(f"Notification: {notification_text}")
             notification_timer -= dt
             alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
             notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
