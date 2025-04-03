@@ -26,7 +26,7 @@ class Intersection:
         self.updated_timer = 0.0
         self.waiting_cars = 0
         self.waiting_time_total = 0.0  # Total wait time of cars near this intersection in this run
-
+        self.congestion_heat = 0.0  # Congestion heat of this intersection in this run
         self.queues = {"N": 0, "S": 0, "E": 0, "W": 0}
 
 
