@@ -175,7 +175,6 @@ def main():
         grid.draw(screen, dt, show_heatmap=show_heatmap)
         draw_ui(screen, font, grid, controller, show_heatmap)
         if notification_timer > 0:
-            # print(f"Notification: {notification_text}")
             notification_timer -= dt
             alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
             notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)

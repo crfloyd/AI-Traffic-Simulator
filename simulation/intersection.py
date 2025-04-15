@@ -33,10 +33,6 @@ class Intersection:
 
     def update(self, dt):
         self.elapsed += dt
-        
-        # if self.elapsed == 0:  # Light just changed
-        #     print(f"[{self.grid_x}, {self.grid_y}] -> Phase changed to {self.phase}")
-
 
         if self.phase == 'NS' and self.elapsed >= self.ns_duration:
             self.phase = 'EW'
