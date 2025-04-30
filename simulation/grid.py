@@ -126,18 +126,20 @@ class Grid:
                     nearest.waiting_time_total += 0
 
         for inter in self.intersections:
-            congestion_signal = inter.waiting_cars
             used_dt = real_dt if real_dt is not None else dt
+            pressure = inter.waiting_cars
 
-            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.92 + congestion_signal * used_dt * 2.0)
-            inter.congestion_heat = min(inter.congestion_heat, 10.0)
+            # Balanced heat model
+            inter.congestion_heat = inter.congestion_heat * 0.90 + pressure * used_dt * 1.5
+            inter.congestion_heat = max(0.0, min(inter.congestion_heat, 10.0))
 
-            if inter.congestion_heat > 2.5:
-                intensity = min(255, int((inter.congestion_heat - 2.0) * 35))
+            if inter.congestion_heat > 0.5:
+                intensity = min(255, int((inter.congestion_heat - 0.5) * 40))
                 glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
                 if show_heatmap:
                     pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
                     screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+
 
 
 
