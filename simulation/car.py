@@ -169,3 +169,5 @@ class Car:
         return nearest
 
 
+    def is_actively_waiting(self, intersection):
+        return self.state == "waiting" and not self.can_go(intersection) and self.velocity < 0.01

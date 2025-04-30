@@ -16,11 +16,17 @@ GRAPH_HEIGHT = 100
 GRAPH_WIDTH = 180
 
 HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 30)
-
+PAUSE_BUTTON_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, WINDOW_HEIGHT - 50, 180, 30)
 
 SIM_SPEED = 1.0  # default time scale
+SIM_SPEED_SECTION_TOP = 370
+SIM_SPEED_SECTION_HEIGHT = 60
+SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTION_TOP + 25, 30, 30)
+SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
 
-def draw_ui(screen, font, grid, controller, show_heatmap):
+
+
+def draw_ui(screen, font, grid, controller, show_heatmap, paused):
     debug = controller.get_debug_info()
 
     # Fonts
@@ -39,13 +45,52 @@ def draw_ui(screen, font, grid, controller, show_heatmap):
     status = debug["status"]
     if "Evaluating" in status:
         status_color = (255, 215, 0)  # yellow
-    elif "Applying" in status:
+    elif "Better" in status:
         status_color = (100, 255, 100)  # green
     elif "Optimization complete" in status:
-        status_color = (100, 245, 100)  # green
+        status_color = (50, 245, 50)  # green
     else:
         status_color = TEXT_COLOR
 
+    # --- Sim Speed Section Box ---
+    pygame.draw.rect(screen, (40, 40, 40), (screen_width - SIDEBAR_WIDTH + 5, SIM_SPEED_SECTION_TOP, 190, SIM_SPEED_SECTION_HEIGHT), border_radius=8)
+
+    # Draw "Sim Speed:" centered at the top of the box
+    speed_label_font = pygame.font.SysFont("Arial", 15)
+    speed_title = speed_label_font.render("Sim Speed:", True, TEXT_COLOR)
+    speed_title_rect = speed_title.get_rect(center=(screen_width - SIDEBAR_WIDTH + SIDEBAR_WIDTH // 2, SIM_SPEED_SECTION_TOP + 12))
+    screen.blit(speed_title, speed_title_rect)
+
+    # Speed buttons
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_DOWN_RECT, border_radius=4)
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_UP_RECT, border_radius=4)
+
+    arrow_font = pygame.font.SysFont("Arial", 20, bold=True)
+    minus_surface = arrow_font.render("<", True, (0, 0, 0))
+    plus_surface = arrow_font.render(">", True, (0, 0, 0))
+    screen.blit(minus_surface, minus_surface.get_rect(center=SPEED_DOWN_RECT.center))
+    screen.blit(plus_surface, plus_surface.get_rect(center=SPEED_UP_RECT.center))
+
+    # Speed value centered between buttons
+    speed_value_font = pygame.font.SysFont("Arial", 16, bold=True)
+    value_label = speed_value_font.render(f"{SIM_SPEED:.1f}x", True, TEXT_COLOR)
+    value_rect = value_label.get_rect(center=(screen_width - SIDEBAR_WIDTH + 100, SPEED_DOWN_RECT.centery))
+    screen.blit(value_label, value_rect)
+
+    # Dynamic color for temperature (hot → cold)
+    T = debug['temperature']
+    T_min = 1
+    T_max = 150
+    alpha = max(0.0, min(1.0, (T - T_min) / (T_max - T_min)))  # 1.0 = hot, 0.0 = cold
+
+    # Interpolate from red (255, 50, 50) to blue (80, 150, 255)
+    r = int(255 * alpha + 80 * (1 - alpha))
+    g = int(50 * alpha + 150 * (1 - alpha))
+    b = int(50 * alpha + 255 * (1 - alpha))
+    temp_color = (r, g, b)
+
+
+    
     lines = [
         (header_font, "Live Traffic Stats:", TEXT_COLOR),
         (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
@@ -54,15 +99,16 @@ def draw_ui(screen, font, grid, controller, show_heatmap):
         (header_font, "", TEXT_COLOR),
         (header_font, "Annealing Debug:", TEXT_COLOR),
         (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
-        (small_font, f"Current Fitness: {debug['current_fitness']:.2f}", TEXT_COLOR),
-        (small_font, f"Temp: {debug['temperature']:.2f}", TEXT_COLOR),
+        (small_font, f"Last Fitness: {debug['current_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Temp: {debug['temperature']:.2f}", temp_color),
         (small_font, f"Last Sim Cars: {debug['cars_processed']}", TEXT_COLOR),
         (small_font, f"Max Sim Cars: {debug['max_cars']}", TEXT_COLOR),
         (small_font, f"Next Mutation: {debug['countdown']:.1f}s", TEXT_COLOR),
         (small_font, "Status:", TEXT_COLOR),
         (small_font, status, status_color),
         (small_font, "", TEXT_COLOR),
-        (small_font, f"Sim Speed: {SIM_SPEED:.1f}x", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
         (small_font, "", TEXT_COLOR),
         (header_font, "Fitness Trend", TEXT_COLOR),
 
@@ -112,22 +158,49 @@ def draw_ui(screen, font, grid, controller, show_heatmap):
 
 
     # Draw the heatmap toggle button
-    toggle_color = (100, 200, 100) if show_heatmap else (200, 100, 100)
-    pygame.draw.rect(screen, toggle_color, HEATMAP_TOGGLE_RECT, border_radius=6)
+    checkbox_label = "Show Heatmap"
+    checkbox_font = pygame.font.SysFont("Arial", 16)
+    checkbox_surface = checkbox_font.render(checkbox_label, True, TEXT_COLOR)
+    screen.blit(checkbox_surface, (HEATMAP_TOGGLE_RECT.x, HEATMAP_TOGGLE_RECT.y))
 
-    toggle_font = pygame.font.SysFont("Arial", 16, bold=True)
-    toggle_label = "Heatmap: ON" if show_heatmap else "Heatmap: OFF"
-    text_surface = toggle_font.render(toggle_label, True, (0, 0, 0))
-    text_rect = text_surface.get_rect(center=HEATMAP_TOGGLE_RECT.center)
-    screen.blit(text_surface, text_rect)
+    box_size = 20
+    box_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, box_size, box_size)
+    pygame.draw.rect(screen, (200, 200, 200), box_rect)
+    if show_heatmap:
+        # Draw a black checkmark
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.left + 4, box_rect.centery),
+                            (box_rect.centerx - 2, box_rect.bottom - 4), 2)
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.centerx - 2, box_rect.bottom - 4),
+                            (box_rect.right - 4, box_rect.top + 4), 2)
+        
+    
+
+
+
+    # Draw Start/Pause button
+    if paused:
+        pause_color = (220, 100, 100)  # light red
+        pause_label = "Paused"
+    else:
+        pause_color = (100, 220, 100)  # light green
+        pause_label = "Running"
+
+    pygame.draw.rect(screen, pause_color, PAUSE_BUTTON_RECT, border_radius=6)
+
+    pause_font = pygame.font.SysFont("Arial", 16, bold=True)
+    pause_surface = pause_font.render(pause_label, True, (0, 0, 0))
+    pause_rect = pause_surface.get_rect(center=PAUSE_BUTTON_RECT.center)
+    screen.blit(pause_surface, pause_rect)
+
+
 
 
 
 def main():
-
+    global SIM_SPEED
+    paused = True 
     notification_text = ""
     notification_timer = 0.0
-    global SIM_SPEED  # make speed adjustable
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Traffic Flow Optimization")
@@ -142,6 +215,7 @@ def main():
     running = True
     last_status_message = None
 
+    PAUSE_BUTTON_RECT.y = screen.get_height() - 80
     while running:
         dt = clock.tick(60) / 1000.0  # Delta time in seconds
         dt *= SIM_SPEED  # Apply time scaling
@@ -156,9 +230,19 @@ def main():
                     SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
                 elif event.key == pygame.K_h:
                     show_heatmap = not show_heatmap
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if HEATMAP_TOGGLE_RECT.collidepoint(event.pos):
+                box_click_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, 20, 20)
+                if box_click_rect.collidepoint(event.pos):
                     show_heatmap = not show_heatmap
+                if PAUSE_BUTTON_RECT.collidepoint(event.pos):
+                    paused = not paused
+                if SPEED_DOWN_RECT.collidepoint(event.pos):
+                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif SPEED_UP_RECT.collidepoint(event.pos):
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
+
 
 
         # Show notification if a new best config was applied
@@ -169,11 +253,18 @@ def main():
                 notification_timer = 2.5
             last_status_message = controller.status_message
 
-        controller.update(dt, grid)
+        if not paused:
+            controller.update(dt, grid)
+
 
         screen.fill(BG_COLOR)
-        grid.draw(screen, dt, show_heatmap=show_heatmap)
-        draw_ui(screen, font, grid, controller, show_heatmap)
+        
+        scaled_dt = 0 if paused else dt * SIM_SPEED
+        real_dt = 0 if paused else dt
+
+        grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
+
+        draw_ui(screen, font, grid, controller, show_heatmap, paused)
         if notification_timer > 0:
             notification_timer -= dt
             alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255

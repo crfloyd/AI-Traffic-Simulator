@@ -1,0 +1,2183 @@
+
+**Table of Contents**
+- /.vscode/settings.json
+- /README.md
+- /main.py
+- /optimizer/controller.py
+- /optimizer/simulator.py
+- /requirements.txt
+- /simulation/car.py
+- /simulation/grid.py
+- /simulation/intersection.py
+- /summary.txt
+
+/.vscode/settings.json
+```
+{
+	"python.formatting.provider": "black",
+	"editor.formatOnPaste": true,
+	"editor.formatOnType": true,
+	"[python]": {
+		"editor.formatOnPaste": true,
+		"editor.formatOnType": true,
+		"editor.defaultFormatter": "ms-python.python"
+	}
+}
+```
+
+/README.md
+```
+# AI-Traffic-Simulator
+
+A visual traffic simulation and optimization system that models vehicle flow through a small urban grid of intersections. It uses **Simulated Annealing**, a probabilistic optimization algorithm, to iteratively improve traffic light timing strategies with the goal of reducing congestion, minimizing vehicle wait times, and increasing overall throughput.
+
+The system simulates realistic traffic behavior, tracks congestion levels, and visually demonstrates the impact of each optimization step in real time.
+
+![traffic ui](image.png)
+
+## Getting Started
+
+Follow these steps to set up and run the project locally.
+
+### Prerequisites
+
+- Python 3.x installed on your system ([Download Python](https://www.python.org/downloads/))
+
+### Setup Instructions
+
+1. **Clone the Repository**
+   `git clone https://github.com/crfloyd/AI-Traffic-Simulator`  
+   `cd AI-Traffic-Simulator`
+
+2. **Create a Virtual Environment**
+   `python -m venv venv`
+
+3. **Activate the Virtual Environment**
+
+   - On Windows:
+
+     ```bash
+     venv\Scripts\activate
+     ```
+
+   - On macOS/Linux:
+
+     ```bash
+     source venv/bin/activate
+     ```
+
+4. **Install Dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Run the Application**
+
+   ```bash
+   python main.py
+   ```
+
+---
+
+### Deactivating the Virtual Environment
+
+When you're done, run the following command to exit the virtual environment:
+
+```bash
+deactivate
+```
+```
+
+/main.py
+```
+import pygame
+import sys
+from simulation.grid import Grid
+from optimizer.controller import AnnealingController
+
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 1000
+
+BG_COLOR = (30, 30, 30)
+TEXT_COLOR = (255, 255, 255)
+COLOR_GREEN = (10, 255, 0)
+
+SIDEBAR_WIDTH = 200
+SIDEBAR_PADDING = 10
+GRAPH_HEIGHT = 100
+GRAPH_WIDTH = 180
+
+HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 30)
+PAUSE_BUTTON_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, WINDOW_HEIGHT - 50, 180, 30)
+
+SIM_SPEED = 1.0  # default time scale
+SIM_SPEED_SECTION_TOP = 370
+SIM_SPEED_SECTION_HEIGHT = 60
+SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTION_TOP + 25, 30, 30)
+SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
+
+
+
+def draw_ui(screen, font, grid, controller, show_heatmap, paused):
+    debug = controller.get_debug_info()
+
+    # Fonts
+    header_font = pygame.font.SysFont("Arial", 20, bold=True)
+    small_font = pygame.font.SysFont("Arial", 16)
+    screen_width = screen.get_width()
+
+
+    # Sidebar background
+    pygame.draw.rect(screen, (50, 50, 50), (screen_width - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, screen.get_height()))
+
+    draw_x = screen_width - SIDEBAR_WIDTH + SIDEBAR_PADDING
+    max_text_width = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING
+
+    # Color-coded status
+    status = debug["status"]
+    if "Evaluating" in status:
+        status_color = (255, 215, 0)  # yellow
+    elif "Better" in status:
+        status_color = (100, 255, 100)  # green
+    elif "Optimization complete" in status:
+        status_color = (50, 245, 50)  # green
+    else:
+        status_color = TEXT_COLOR
+
+    # --- Sim Speed Section Box ---
+    pygame.draw.rect(screen, (40, 40, 40), (screen_width - SIDEBAR_WIDTH + 5, SIM_SPEED_SECTION_TOP, 190, SIM_SPEED_SECTION_HEIGHT), border_radius=8)
+
+    # Draw "Sim Speed:" centered at the top of the box
+    speed_label_font = pygame.font.SysFont("Arial", 15)
+    speed_title = speed_label_font.render("Sim Speed:", True, TEXT_COLOR)
+    speed_title_rect = speed_title.get_rect(center=(screen_width - SIDEBAR_WIDTH + SIDEBAR_WIDTH // 2, SIM_SPEED_SECTION_TOP + 12))
+    screen.blit(speed_title, speed_title_rect)
+
+    # Speed buttons
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_DOWN_RECT, border_radius=4)
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_UP_RECT, border_radius=4)
+
+    arrow_font = pygame.font.SysFont("Arial", 20, bold=True)
+    minus_surface = arrow_font.render("<", True, (0, 0, 0))
+    plus_surface = arrow_font.render(">", True, (0, 0, 0))
+    screen.blit(minus_surface, minus_surface.get_rect(center=SPEED_DOWN_RECT.center))
+    screen.blit(plus_surface, plus_surface.get_rect(center=SPEED_UP_RECT.center))
+
+    # Speed value centered between buttons
+    speed_value_font = pygame.font.SysFont("Arial", 16, bold=True)
+    value_label = speed_value_font.render(f"{SIM_SPEED:.1f}x", True, TEXT_COLOR)
+    value_rect = value_label.get_rect(center=(screen_width - SIDEBAR_WIDTH + 100, SPEED_DOWN_RECT.centery))
+    screen.blit(value_label, value_rect)
+
+    # Dynamic color for temperature (hot → cold)
+    T = debug['temperature']
+    T_min = 1
+    T_max = 150
+    alpha = max(0.0, min(1.0, (T - T_min) / (T_max - T_min)))  # 1.0 = hot, 0.0 = cold
+
+    # Interpolate from red (255, 50, 50) to blue (80, 150, 255)
+    r = int(255 * alpha + 80 * (1 - alpha))
+    g = int(50 * alpha + 150 * (1 - alpha))
+    b = int(50 * alpha + 255 * (1 - alpha))
+    temp_color = (r, g, b)
+
+
+    
+    lines = [
+        (header_font, "Live Traffic Stats:", TEXT_COLOR),
+        (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
+        (small_font, f"Cars Processed: {grid.cars_processed}", TEXT_COLOR),
+        (small_font, f"Live Fitness: {grid.fitness:.2f}", TEXT_COLOR),
+        (header_font, "", TEXT_COLOR),
+        (header_font, "Annealing Debug:", TEXT_COLOR),
+        (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Last Fitness: {debug['current_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Temp: {debug['temperature']:.2f}", temp_color),
+        (small_font, f"Last Sim Cars: {debug['cars_processed']}", TEXT_COLOR),
+        (small_font, f"Max Sim Cars: {debug['max_cars']}", TEXT_COLOR),
+        (small_font, f"Next Mutation: {debug['countdown']:.1f}s", TEXT_COLOR),
+        (small_font, "Status:", TEXT_COLOR),
+        (small_font, status, status_color),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (header_font, "Fitness Trend", TEXT_COLOR),
+
+    ]
+
+    y = 20
+    for font_type, text, color in lines:
+        label_surface = font_type.render(text, True, color)
+        if label_surface.get_width() > max_text_width:
+            # Truncate text if needed
+            max_chars = int(len(text) * max_text_width / label_surface.get_width()) - 3
+            text = text[:max_chars] + "..."
+            label_surface = font_type.render(text, True, color)
+
+        screen.blit(label_surface, (draw_x, y))
+        y += font_type.get_linesize() + 4
+
+
+    # Fitness graph
+    points = debug.get("fitness_history", [])
+    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
+    graph_surface.fill((20, 20, 20))
+
+    if len(points) > 1:
+        max_val = max(points)
+        min_val = min(points)
+        range_val = max(max_val - min_val, 0.05)
+
+        for i in range(len(points) - 1):
+            x1 = i * GRAPH_WIDTH // (len(points) - 1)
+            x2 = (i + 1) * GRAPH_WIDTH // (len(points) - 1)
+
+            y1 = GRAPH_HEIGHT - int((points[i] - min_val) / range_val * GRAPH_HEIGHT)
+            y2 = GRAPH_HEIGHT - int((points[i + 1] - min_val) / range_val * GRAPH_HEIGHT)
+
+            pygame.draw.line(graph_surface, (0, 255, 0), (x1, y1), (x2, y2), 2)
+            pygame.draw.circle(graph_surface, (0, 255, 0), (x1, y1), 2)
+
+        last_y = GRAPH_HEIGHT - int((points[-1] - min_val) / range_val * GRAPH_HEIGHT)
+        pygame.draw.circle(graph_surface, (0, 255, 0), (GRAPH_WIDTH - 2, last_y), 2)
+    else:
+        placeholder_font = pygame.font.SysFont("Arial", 14)
+        msg = placeholder_font.render("Waiting for data...", True, (150, 150, 150))
+        graph_surface.blit(msg, (10, GRAPH_HEIGHT // 2 - msg.get_height() // 2))
+
+    screen.blit(graph_surface, (draw_x, y))
+
+
+    # Draw the heatmap toggle button
+    checkbox_label = "Show Heatmap"
+    checkbox_font = pygame.font.SysFont("Arial", 16)
+    checkbox_surface = checkbox_font.render(checkbox_label, True, TEXT_COLOR)
+    screen.blit(checkbox_surface, (HEATMAP_TOGGLE_RECT.x, HEATMAP_TOGGLE_RECT.y))
+
+    box_size = 20
+    box_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, box_size, box_size)
+    pygame.draw.rect(screen, (200, 200, 200), box_rect)
+    if show_heatmap:
+        # Draw a black checkmark
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.left + 4, box_rect.centery),
+                            (box_rect.centerx - 2, box_rect.bottom - 4), 2)
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.centerx - 2, box_rect.bottom - 4),
+                            (box_rect.right - 4, box_rect.top + 4), 2)
+        
+    
+
+
+
+    # Draw Start/Pause button
+    if paused:
+        pause_color = (220, 100, 100)  # light red
+        pause_label = "Paused"
+    else:
+        pause_color = (100, 220, 100)  # light green
+        pause_label = "Running"
+
+    pygame.draw.rect(screen, pause_color, PAUSE_BUTTON_RECT, border_radius=6)
+
+    pause_font = pygame.font.SysFont("Arial", 16, bold=True)
+    pause_surface = pause_font.render(pause_label, True, (0, 0, 0))
+    pause_rect = pause_surface.get_rect(center=PAUSE_BUTTON_RECT.center)
+    screen.blit(pause_surface, pause_rect)
+
+
+
+
+
+def main():
+    global SIM_SPEED
+    paused = True 
+    notification_text = ""
+    notification_timer = 0.0
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("Traffic Flow Optimization")
+    clock = pygame.time.Clock()
+    show_heatmap = False
+
+    font = pygame.font.SysFont("Arial", 20)
+    grid = Grid()
+
+    controller = AnnealingController()
+
+    running = True
+    last_status_message = None
+
+    PAUSE_BUTTON_RECT.y = screen.get_height() - 80
+    while running:
+        dt = clock.tick(60) / 1000.0  # Delta time in seconds
+        dt *= SIM_SPEED  # Apply time scaling
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
+                elif event.key == pygame.K_MINUS:
+                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif event.key == pygame.K_h:
+                    show_heatmap = not show_heatmap
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                box_click_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, 20, 20)
+                if box_click_rect.collidepoint(event.pos):
+                    show_heatmap = not show_heatmap
+                if PAUSE_BUTTON_RECT.collidepoint(event.pos):
+                    paused = not paused
+                if SPEED_DOWN_RECT.collidepoint(event.pos):
+                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif SPEED_UP_RECT.collidepoint(event.pos):
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
+
+
+
+        # Show notification if a new best config was applied
+        if controller.status_message != last_status_message:
+            if controller.status_message == controller.STATUS_BEST_APPLIED:
+                print(f"Notification: {controller.status_message}")
+                notification_text = controller.status_message
+                notification_timer = 2.5
+            last_status_message = controller.status_message
+
+        if not paused:
+            controller.update(dt, grid)
+
+
+        screen.fill(BG_COLOR)
+        
+        scaled_dt = 0 if paused else dt * SIM_SPEED
+        real_dt = 0 if paused else dt
+
+        grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
+
+        draw_ui(screen, font, grid, controller, show_heatmap, paused)
+        if notification_timer > 0:
+            notification_timer -= dt
+            alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
+            notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
+            notif_surface.fill((0, 0, 0, 180))
+            font_big = pygame.font.SysFont("Arial", 24, bold=True)
+            text = font_big.render(notification_text, True, (255, 255, 255))
+            notif_surface.blit(text, (250 - text.get_width() // 2, 10))
+            notif_surface.set_alpha(alpha)
+            sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
+            text_rect = notif_surface.get_rect(center=(sim_width // 2, WINDOW_HEIGHT // 2))
+            screen.blit(notif_surface, text_rect)
+
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
+```
+
+/optimizer/controller.py
+```
+import math
+import random
+import threading
+import pygame
+from optimizer.simulator import Simulator
+from simulation.grid import GRID_ROWS, GRID_COLS, Grid
+
+class AnnealingController:
+    STATUS_INIT = "Evaluating initial config..."
+    STATUS_OPTIMIZATION_DONE = "Optimization complete"
+    STATUS_REJECTED = "Rejected: gridlock"
+    STATUS_APPLYING = "Applying new config..."
+    STATUS_BEST_INITIALIZED = "Config initialized"
+    STATUS_BEST_APPLIED = "Better config found!"
+    STATUS_WAITING = "Waiting for next sim"
+    STATUS_EVALUATING = "Evaluating new config..."
+
+    def __init__(self, run_interval=10, T_start=150, T_min=1, alpha=0.95):
+        self.sim = Simulator()
+        self.T = T_start
+        self.T_min = T_min
+        self.alpha = alpha
+        self.interval = run_interval  # Controls delay between mutations
+        self.timer = 0.0
+        self.optimization_locked = False
+        self.show_heatmap = True
+
+
+        grid = Grid(headless=True)
+
+        # Deliberately bad: favor NS at every intersection, even though EW traffic is heavier
+        self.current_config = [
+            {"ns_duration": 10, "ew_duration": 3} if i % 2 == 0 else {"ns_duration": 3, "ew_duration": 10}
+            for i in range(len(grid.intersections))
+        ]
+
+
+        self.prev_config = [cfg.copy() for cfg in self.current_config]
+        self.best_config = self.current_config.copy()
+        self.offscreen_surface = pygame.Surface((grid.window_width, grid.window_height))
+
+        self.current_fitness = None
+        self.best_fitness = None
+        self.last_throughput = 0.0
+        self.fitness_history = []
+
+        self.last_cars_processed = 0
+        self.max_cars_processed = 0
+
+        self.pending_result = None
+        self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(self.current_config,))
+        self.eval_thread.start()
+
+        self.status_message = self.STATUS_INIT
+
+    def mutate(self, config_list):
+        def clamp(value, min_val, max_val):
+            return max(min_val, min(value, max_val))
+
+        new_config = [cfg.copy() for cfg in config_list]
+
+        num_to_mutate = random.randint(1, 2)
+        for _ in range(num_to_mutate):
+            i = random.randint(0, len(new_config) - 1)
+            new_config[i]["ns_duration"] += random.choice([-1, 1])
+            new_config[i]["ew_duration"] += random.choice([-1, 1])
+            new_config[i]["ns_duration"] = clamp(new_config[i]["ns_duration"], 3, 10)
+            new_config[i]["ew_duration"] = clamp(new_config[i]["ew_duration"], 3, 10)
+
+        return new_config
+
+    def evaluate_in_background(self, new_config):
+        duration = self.get_dynamic_duration()
+        print(f"⏱ Sim duration: {duration}s at T={self.T:.2f}")
+        fitness, throughput, cars_processed = self.sim.run(new_config, duration=duration, return_cars=True)
+        self.pending_result = (new_config, fitness, throughput, cars_processed)
+
+    def get_dynamic_duration(self):
+        temp = max(self.T_min, min(self.T, 100))
+        return int(20 + (90 - 20) * (1 - (temp - self.T_min) / (100 - self.T_min)))
+
+    def update(self, dt, grid):
+        if self.status_message == self.STATUS_OPTIMIZATION_DONE:
+            return
+
+        self.timer += dt
+
+        if self.T <= self.T_min and not self.eval_thread and not self.optimization_locked:
+            print("🌡️ Optimization complete — locking best config")
+            self.current_config = self.best_config
+            self.status_message = self.STATUS_OPTIMIZATION_DONE
+            self.optimization_locked = True 
+
+            for inter, cfg in zip(grid.intersections, self.best_config):
+                inter.ns_duration = cfg["ns_duration"]
+                inter.ew_duration = cfg["ew_duration"]
+                inter.elapsed = 0.0
+                inter.mark_updated()
+
+            grid.cars.clear()
+            grid.total_wait_time = 0.0
+            grid.cars_processed = 0
+            grid.avg_wait_time = 0.0
+
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+            return
+
+        if self.pending_result:
+            new_config, new_fitness, new_throughput, cars_processed = self.pending_result
+            self.pending_result = None
+
+            if cars_processed == 0:
+                print("⚠️ Gridlock detected — rejecting mutation")
+                self.status_message = self.STATUS_REJECTED
+                self.timer = 0
+                return
+
+            self.status_message = self.STATUS_APPLYING
+
+            if self.current_fitness is None:
+                self.current_fitness = new_fitness
+                self.best_fitness = new_fitness
+                self.best_config = new_config
+                
+                # Apply best config visually
+                for inter, cfg in zip(grid.intersections, new_config):
+                    inter.ns_duration = cfg["ns_duration"]
+                    inter.ew_duration = cfg["ew_duration"]
+                    inter.elapsed = 0.0
+                    inter.mark_updated()
+
+                grid.cars.clear()
+                grid.total_wait_time = 0.0
+                grid.cars_processed = 0
+                grid.avg_wait_time = 0.0
+
+                self.status_message = self.STATUS_BEST_INITIALIZED
+
+            else:
+                delta = new_fitness - self.current_fitness
+                accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
+
+                if random.random() < accept_prob:
+                    self.current_config = new_config
+                    self.current_fitness = new_fitness
+
+                    if new_fitness < self.best_fitness:
+                        self.best_config = new_config
+                        self.best_fitness = new_fitness
+                        print("🌟 New best fitness:", self.best_fitness)
+
+                        grid.cars.clear()
+                        grid.total_wait_time = 0.0
+                        grid.cars_processed = 0
+                        grid.avg_wait_time = 0.0
+                        self.status_message = self.STATUS_BEST_APPLIED
+
+                else:
+                    print("❌ Rejected new config")
+
+                if self.status_message != self.STATUS_OPTIMIZATION_DONE:
+                    self.T *= self.alpha
+
+
+            self.last_throughput = new_throughput
+            self.last_cars_processed = cars_processed
+            self.max_cars_processed = max(self.max_cars_processed, cars_processed)
+
+            self.fitness_history.append(self.best_fitness)
+            if len(self.fitness_history) > 100:
+                self.fitness_history.pop(0)
+
+            for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
+                inter.ns_duration = cfg["ns_duration"]
+                inter.ew_duration = cfg["ew_duration"]
+                inter.elapsed = 0.0
+
+                if self.T > self.T_min:
+                    if (
+                        cfg["ns_duration"] != old_cfg["ns_duration"] or
+                        cfg["ew_duration"] != old_cfg["ew_duration"]
+                    ):
+                        inter.mark_updated()
+
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+            if self.status_message not in (self.STATUS_BEST_INITIALIZED, self.STATUS_BEST_APPLIED):
+                self.status_message = self.STATUS_WAITING
+            self.timer = 0
+
+        elif self.timer >= self.interval and not self.eval_thread:
+            self.status_message = self.STATUS_EVALUATING
+            new_config = self.mutate(self.current_config)
+            self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(new_config,))
+            self.eval_thread.start()
+
+    def evaluate_and_cleanup(self, new_config):
+        self.evaluate_in_background(new_config)
+        self.eval_thread = None
+
+    def get_debug_info(self):
+        return {
+            "best_fitness": self.best_fitness if self.best_fitness is not None else 0.0,
+            "current_fitness": self.current_fitness if self.current_fitness is not None else 0.0,
+            "temperature": self.T,
+            "current_config": self.current_config,
+            "countdown": max(0.0, self.interval - self.timer),
+            "fitness_history": self.fitness_history,
+            "status": self.status_message,
+            "throughput": self.last_throughput,
+            "cars_processed": self.last_cars_processed,
+            "max_cars": self.max_cars_processed,
+        }
+```
+
+/optimizer/simulator.py
+```
+import pygame
+import random
+from simulation.grid import Grid
+
+class Simulator:
+    def __init__(self):
+        pygame.init()
+        self.clock = pygame.time.Clock()
+
+    def run(self, config, duration=30, return_cars=False):
+        grid = Grid(headless=True)
+        self.screen = pygame.Surface((grid.window_width, grid.window_height))
+
+
+        # Apply config to each intersection
+        for inter, cfg in zip(grid.intersections, config):
+            inter.ns_duration = cfg["ns_duration"]
+            inter.ew_duration = cfg["ew_duration"]
+            inter.elapsed = random.uniform(0, 3)  # Desync light timers
+
+        warmup = 5.0  # Let traffic settle
+        total_sim_time = duration + warmup
+
+        # Fixed timestep (simulate at 60 FPS)
+        dt = 1.0 / 60.0
+        steps = int(total_sim_time / dt)
+
+        for _ in range(steps):
+            grid.draw(self.screen, dt)
+
+        # Only count stats from final `duration` seconds
+        if return_cars:
+            print(f"Evaluated config with fitness {grid.fitness:.2f} and {grid.cars_processed} cars processed in {duration:.1f}s")
+
+            return grid.fitness, (grid.cars_processed / duration) * 60, grid.cars_processed
+        else:
+            return grid.fitness, (grid.cars_processed / duration) * 60
+```
+
+/requirements.txt
+```
+contourpy==1.3.1
+cycler==0.12.1
+fonttools==4.56.0
+kiwisolver==1.4.8
+matplotlib==3.10.1
+numpy==2.2.4
+packaging==24.2
+pillow==11.1.0
+pygame==2.6.1
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+```
+
+/simulation/car.py
+```
+import pygame
+import math
+
+CAR_WIDTH = 12
+CAR_LENGTH = 20
+CAR_COLOR = (0, 200, 255)
+CAR_STOP_GAP = 15
+CAR_START_GAP = 35
+
+class Car:
+    def __init__(self, x, y, direction, max_speed=100, acceleration=50):
+        self.x = x
+        self.y = y
+        self.direction = direction  # "N", "S", "E", "W"
+        self.velocity = 0.0
+        self.max_speed = max_speed
+        self.acceleration = acceleration
+        self.state = "moving"  # or "waiting"
+        self.stopped_time = 0.0
+        self.length = CAR_LENGTH
+        self.width = CAR_WIDTH
+        self.spawn_x = x
+        self.spawn_y = y
+        self.entered_grid = False
+        self.age = 0.0
+
+
+    def update(self, intersections, dt, cars):
+        self.age += dt
+
+        # Check if car has moved far enough to start obeying intersections
+        if not self.entered_grid:
+            dist_from_start = math.hypot(self.x - self.spawn_x, self.y - self.spawn_y)
+            if dist_from_start > 100:
+                self.entered_grid = True
+
+        near_intersection = (
+            self.entered_grid and 
+            any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
+        )
+
+        if near_intersection or self.car_blocking_ahead(cars):
+            # Stop if there's a red light or car blocking
+            self.velocity = 0.0
+            self.state = "waiting"
+            self.stopped_time += dt
+            return
+        else:
+            # Accelerate
+            target_speed = self.max_speed * getattr(self, 'road_speed_factor', 1.0)
+            accel_rate = self.acceleration * dt
+
+            # Smooth acceleration using linear interpolation
+            if self.velocity < target_speed:
+                self.velocity += accel_rate
+                self.velocity = min(self.velocity, target_speed)
+            elif self.velocity > target_speed:
+                self.velocity -= accel_rate  # for future use if speed limits drop
+                self.velocity = max(self.velocity, target_speed)
+
+
+        dist = self.velocity * dt
+        if self.direction == "N":
+            self.y -= dist
+        elif self.direction == "S":
+            self.y += dist
+        elif self.direction == "E":
+            self.x += dist
+        elif self.direction == "W":
+            self.x -= dist
+
+    def draw(self, screen):
+        if self.direction in ("N", "S"):
+            rect = pygame.Rect(self.x - CAR_WIDTH // 2, self.y - CAR_LENGTH // 2, CAR_WIDTH, CAR_LENGTH)
+        else:
+            rect = pygame.Rect(self.x - CAR_LENGTH // 2, self.y - CAR_WIDTH // 2, CAR_LENGTH, CAR_WIDTH)
+
+        pygame.draw.rect(screen, CAR_COLOR, rect)
+
+    def is_near(self, intersection, threshold=35):
+        if self.direction == "N":
+            return abs(self.x - intersection.cx) < 10 and 0 < self.front_position() - intersection.cy < threshold
+        if self.direction == "S":
+            return abs(self.x - intersection.cx) < 10 and 0 < intersection.cy - self.front_position() < threshold
+        if self.direction == "E":
+            return abs(self.y - intersection.cy) < 10 and 0 < intersection.cx - self.front_position() < threshold
+        if self.direction == "W":
+            return abs(self.y - intersection.cy) < 10 and 0 < self.front_position() - intersection.cx < threshold
+        return False
+
+
+    def can_go(self, intersection):
+        if intersection.phase == "ALL_RED":
+            return False
+        if self.direction in ("N", "S") and intersection.phase == "NS":
+            return True
+        if self.direction in ("E", "W") and intersection.phase == "EW":
+            return True
+        return False
+
+
+    def car_blocking_ahead(self, cars):
+        for other in cars:
+            if other is self:
+                continue
+            if not self.is_in_same_lane(other):
+                continue
+            edge_gap = self.edge_distance_to(other)
+
+            if self.state == "waiting":
+                if edge_gap < CAR_STOP_GAP:
+                    return True
+            else:
+                if edge_gap < CAR_START_GAP:
+                    return True
+        return False
+
+
+    
+
+    def edge_distance_to(self, other):
+        if self.direction == "N":
+            return (self.y - CAR_LENGTH / 2) - (other.y + CAR_LENGTH / 2)
+        if self.direction == "S":
+            return (other.y - CAR_LENGTH / 2) - (self.y + CAR_LENGTH / 2)
+        if self.direction == "E":
+            return (other.x - CAR_LENGTH / 2) - (self.x + CAR_LENGTH / 2)
+        if self.direction == "W":
+            return (self.x - CAR_LENGTH / 2) - (other.x + CAR_LENGTH / 2)
+        return 9999
+
+    
+
+    def is_in_same_lane(self, other):
+        if self.direction == "N" and other.direction == "N":
+            return abs(self.x - other.x) < 10 and self.y > other.y
+        if self.direction == "S" and other.direction == "S":
+            return abs(self.x - other.x) < 10 and self.y < other.y
+        if self.direction == "E" and other.direction == "E":
+            return abs(self.y - other.y) < 10 and self.x < other.x
+        if self.direction == "W" and other.direction == "W":
+            return abs(self.y - other.y) < 10 and self.x > other.x
+        return False
+
+    def distance_to(self, other):
+        if self.direction in ("N", "S"):
+            return abs(self.y - other.y)
+        else:
+            return abs(self.x - other.x)
+        
+    def front_position(self):
+        if self.direction == "N":
+            return self.y - self.length / 2
+        elif self.direction == "S":
+            return self.y + self.length / 2
+        elif self.direction == "E":
+            return self.x + self.length / 2
+        elif self.direction == "W":
+            return self.x - self.length / 2
+        
+    def get_nearest_intersection(self, intersections):
+        min_dist = float("inf")
+        nearest = None
+        for inter in intersections:
+            dist = math.hypot(self.x - inter.cx, self.y - inter.cy)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = inter
+        return nearest
+```
+
+/simulation/grid.py
+```
+import pygame
+import random
+from simulation.intersection import Intersection
+from simulation.car import Car
+
+GRID_ROWS = 4
+GRID_COLS = 5
+ROAD_WIDTH = 40
+SIDEBAR_WIDTH = 200
+CAR_SPEED = 140
+CAR_ACCEL = 50
+SCREEN_MARGIN = 60
+HEAVY_CONGESTION_THRESHOLD = 15
+SPILLOVER_THRESHOLD = 5
+
+
+class Grid:
+    def __init__(self, headless=False):
+        self.headless = headless
+
+        info = pygame.display.Info()
+        self.window_width = info.current_w
+        self.window_height = info.current_h
+
+        self.grid_width = self.window_width - SIDEBAR_WIDTH
+        self.grid_height = self.window_height
+
+        self.col_positions = self.compute_positions(
+            GRID_COLS,
+            left=SCREEN_MARGIN,
+            right=self.window_width - SIDEBAR_WIDTH - SCREEN_MARGIN
+        )
+
+        self.row_positions = self.compute_positions(
+            GRID_ROWS,
+            top=SCREEN_MARGIN,
+            bottom=self.window_height - SCREEN_MARGIN
+        )
+
+        self.cars = []
+        self.spawn_timer = 0.0
+        self.spawn_interval = 0.5 if headless else 1
+
+        self.total_wait_time = 0.0
+        self.cars_processed = 0
+        self.avg_wait_time = 0.0
+        self.fitness = 0.0
+
+        self.road_speed_limits = {
+            "horizontal": {},
+            "vertical": {}
+        }
+
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS - 1):
+                self.road_speed_limits["horizontal"][(row, col)] = 1.0
+        for row in range(GRID_ROWS - 1):
+            for col in range(GRID_COLS):
+                self.road_speed_limits["vertical"][(row, col)] = 0.5
+
+        self.intersections = []
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS):
+                cx = self.col_positions[col]
+                cy = self.row_positions[row]
+                inter = Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS)
+                inter.waiting_cars = 0
+                inter.waiting_time_total = 0.0
+                inter.prev_waiting_cars = 0
+                inter.prev_waiting_time = 0.0
+                inter.congestion_heat = 0.0
+                self.intersections.append(inter)
+
+    def compute_positions(self, count, left=None, right=None, top=None, bottom=None):
+        if left is not None and right is not None:
+            spacing = (right - left) / (count - 1)
+            return [left + i * spacing for i in range(count)]
+        elif top is not None and bottom is not None:
+            spacing = (bottom - top) / (count - 1)
+            return [top + i * spacing for i in range(count)]
+        else:
+            raise ValueError("Must specify left/right or top/bottom bounds.")
+
+    def get_speed_limit(self, car):
+        if car.direction in ("E", "W"):
+            row = min(range(GRID_ROWS), key=lambda r: abs(car.y - self.row_positions[r]))
+            col = max(0, min(GRID_COLS - 2, sum(car.x > cp for cp in self.col_positions) - 1))
+            return self.road_speed_limits["horizontal"].get((row, col), 1.0)
+        else:
+            col = min(range(GRID_COLS), key=lambda c: abs(car.x - self.col_positions[c]))
+            row = max(0, min(GRID_ROWS - 2, sum(car.y > rp for rp in self.row_positions) - 1))
+            return self.road_speed_limits["vertical"].get((row, col), 1.0)
+
+    def draw(self, screen, dt, show_heatmap=True, real_dt=None):
+        for cy in self.row_positions:
+            pygame.draw.rect(screen, (100, 100, 100), (
+                self.col_positions[0],
+                cy - ROAD_WIDTH // 2,
+                self.col_positions[-1] - self.col_positions[0],
+                ROAD_WIDTH
+            ))
+
+        for cx in self.col_positions:
+            pygame.draw.rect(screen, (100, 100, 100), (
+                cx - ROAD_WIDTH // 2,
+                self.row_positions[0],
+                ROAD_WIDTH,
+                self.row_positions[-1] - self.row_positions[0]
+            ))
+
+        for inter in self.intersections:
+            inter.update(dt)
+            inter.draw(screen)
+
+        for car in self.cars:
+            car.road_speed_factor = self.get_speed_limit(car)
+            car.update(self.intersections, dt, self.cars)
+            car.draw(screen)
+            nearest = car.get_nearest_intersection(self.intersections)
+            if car.state == "waiting" and nearest:
+                nearest.waiting_cars += 1
+                nearest.waiting_time_total += dt 
+            else:
+                if nearest:
+                    nearest.waiting_time_total += 0
+
+        for inter in self.intersections:
+            congestion_signal = inter.waiting_cars
+            used_dt = real_dt if real_dt is not None else dt
+            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.85 + congestion_signal * used_dt * 12)
+
+            if inter.congestion_heat > 0.2:
+                intensity = min(255, int(inter.congestion_heat * 40))
+                glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+                if show_heatmap:
+                    pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
+                    screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+
+
+        for inter in self.intersections:
+            inter.prev_waiting_cars = inter.waiting_cars
+            inter.prev_waiting_time = inter.waiting_time_total
+            inter.waiting_cars = 0
+            inter.waiting_time_total = 0.0
+
+        remaining = []
+        for c in self.cars:
+            if -50 <= c.x <= self.window_width - SIDEBAR_WIDTH + 50 and -50 <= c.y <= self.window_height + 50:
+                remaining.append(c)
+            else:
+                self.total_wait_time += c.stopped_time
+                self.cars_processed += 1
+        self.cars = remaining
+
+        self.avg_wait_time = self.total_wait_time / self.cars_processed if self.cars_processed > 0 else 0.0
+
+        self.spawn_timer += dt
+        if self.headless:
+            while self.spawn_timer >= self.spawn_interval:
+                self.spawn_car()
+                self.spawn_timer -= self.spawn_interval
+        else:
+            if self.spawn_timer >= self.spawn_interval:
+                self.spawn_car()
+                self.spawn_timer = 0
+
+        mildly_stopped = sum(1 for c in self.cars if c.stopped_time > 10.0)
+        severely_stopped = sum(1 for c in self.cars if c.stopped_time > 20.0)
+        queued = len(self.cars)
+        intersection_congestion = sum(i.prev_waiting_cars for i in self.intersections)
+        intersection_wait_penalty = sum(i.prev_waiting_time for i in self.intersections)
+        heavy_congestion_penalty = max(0, queued - HEAVY_CONGESTION_THRESHOLD)
+
+        car_weight = 0.05
+        time_weight = 0.02
+        norm_waiting_cars = sum(i.prev_waiting_cars * car_weight for i in self.intersections)
+        norm_waiting_time = sum(i.prev_waiting_time * time_weight for i in self.intersections)
+        avg_age = sum(c.age for c in self.cars) / len(self.cars) if self.cars else 0
+        spillovers = sum(1 for i in self.intersections if i.prev_waiting_cars > SPILLOVER_THRESHOLD)
+        low_throughput_penalty = 0.0
+        if self.cars_processed < 10:
+            low_throughput_penalty = 5.0
+
+        self.fitness = (
+            0.4 * self.avg_wait_time +
+            1.0 * mildly_stopped +
+            3.0 * severely_stopped +
+            0.15 * heavy_congestion_penalty +
+            0.05 * intersection_congestion +
+            0.02 * intersection_wait_penalty +
+            norm_waiting_cars +
+            norm_waiting_time -
+            0.05 * self.cars_processed + 
+            0.1 * avg_age +
+            0.3 * spillovers +
+            low_throughput_penalty
+        )
+        self.total_congestion = intersection_congestion
+
+    def spawn_car(self):
+        edge = random.choices(["N", "S", "E", "W"], weights=[1, 1, 3, 3])[0]
+
+        if edge == "N":
+            col = random.choice(self.col_positions)
+            x, y, d = col, self.window_height, "N"
+        elif edge == "S":
+            col = random.choice(self.col_positions)
+            x, y, d = col, 0, "S"
+        elif edge == "E":
+            row = random.choice(self.row_positions)
+            x, y, d = 0, row, "E"
+        elif edge == "W":
+            row = random.choice(self.row_positions)
+            x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
+
+        self.cars.append(Car(x, y, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+```
+
+/simulation/intersection.py
+```
+# simulation/intersection.py
+
+import pygame
+import random
+
+LIGHT_SIZE = 20
+
+class Intersection:
+    def __init__(self, grid_x, grid_y, cx, cy, num_rows, num_cols):
+        self.col = grid_x
+        self.row = grid_y
+        self.cx = cx
+        self.cy = cy
+        self.rect = pygame.Rect(cx - 20, cy - 20, 40, 40)
+
+        self.num_rows = num_rows
+        self.num_cols = num_cols
+
+        self.phase = 'NS'
+        self.elapsed = random.uniform(0, 5)  # ✨ Desync phase start time
+
+        self.ns_duration = 5
+        self.ew_duration = 5
+
+        self.just_updated = False
+        self.updated_timer = 0.0
+        self.waiting_cars = 0
+        self.waiting_time_total = 0.0  # Total wait time of cars near this intersection in this run
+        self.congestion_heat = 0.0  # Congestion heat of this intersection in this run
+        self.queues = {"N": 0, "S": 0, "E": 0, "W": 0}
+
+
+
+    def update(self, dt):
+        self.elapsed += dt
+
+        if self.phase == 'NS' and self.elapsed >= self.ns_duration:
+            self.phase = 'EW'
+            self.elapsed = 0
+        elif self.phase == 'EW' and self.elapsed >= self.ew_duration:
+            self.phase = 'NS'
+            self.elapsed = 0
+            
+        if self.just_updated:
+            self.updated_timer -= dt
+            if self.updated_timer <= 0:
+                self.just_updated = False
+
+
+
+    @property
+    def phase_before(self):
+        return 'EW' if self.phase == 'NS' else 'NS'
+
+    def draw(self, screen):
+        # Intersection box
+        pygame.draw.rect(screen, (150, 150, 150), (self.cx - 20, self.cy - 20, 40, 40))
+
+        # RED = (255, 0, 0), GREEN = (0, 255, 0)
+        ns_color = (0, 255, 0) if self.phase == "NS" else (255, 0, 0)
+        ew_color = (0, 255, 0) if self.phase == "EW" else (255, 0, 0)
+
+        # Draw vertical lights (north/south)
+        if self.row > 0:  # Show north light only if not in top row
+            pygame.draw.circle(screen, ns_color, (self.cx, self.cy - 30), 6)
+        if self.row < self.num_rows - 1:  # Show south light only if not in bottom row
+            pygame.draw.circle(screen, ns_color, (self.cx, self.cy + 30), 6)
+
+        # Draw horizontal lights (east/west)
+        if self.col > 0:  # Show west light only if not in first column
+            pygame.draw.circle(screen, ew_color, (self.cx - 30, self.cy), 6)
+        if self.col < self.num_cols - 1:  # Show east light only if not in last column
+            pygame.draw.circle(screen, ew_color, (self.cx + 30, self.cy), 6)
+
+    def mark_updated(self):
+        self.just_updated = True
+        self.updated_timer = 1.5  # seconds
+
+    def reset(self):
+        self.waiting_cars = 0
+        self.waiting_time_total = 0.0
+```
+
+/summary.txt
+```
+
+**Table of Contents**
+- /.vscode/settings.json
+- /README.md
+- /main.py
+- /optimizer/controller.py
+- /optimizer/simulator.py
+- /requirements.txt
+- /simulation/car.py
+- /simulation/grid.py
+- /simulation/intersection.py
+- /summary.txt
+
+/.vscode/settings.json
+```
+{
+	"python.formatting.provider": "black",
+	"editor.formatOnPaste": true,
+	"editor.formatOnType": true,
+	"[python]": {
+		"editor.formatOnPaste": true,
+		"editor.formatOnType": true,
+		"editor.defaultFormatter": "ms-python.python"
+	}
+}
+```
+
+/README.md
+```
+# AI-Traffic-Simulator
+
+A visual traffic simulation and optimization system that models vehicle flow through a small urban grid of intersections. It uses **Simulated Annealing**, a probabilistic optimization algorithm, to iteratively improve traffic light timing strategies with the goal of reducing congestion, minimizing vehicle wait times, and increasing overall throughput.
+
+The system simulates realistic traffic behavior, tracks congestion levels, and visually demonstrates the impact of each optimization step in real time.
+
+![traffic ui](image.png)
+
+## Getting Started
+
+Follow these steps to set up and run the project locally.
+
+### Prerequisites
+
+- Python 3.x installed on your system ([Download Python](https://www.python.org/downloads/))
+
+### Setup Instructions
+
+1. **Clone the Repository**
+   `git clone https://github.com/crfloyd/AI-Traffic-Simulator`  
+   `cd AI-Traffic-Simulator`
+
+2. **Create a Virtual Environment**
+   `python -m venv venv`
+
+3. **Activate the Virtual Environment**
+
+   - On Windows:
+
+     ```bash
+     venv\Scripts\activate
+     ```
+
+   - On macOS/Linux:
+
+     ```bash
+     source venv/bin/activate
+     ```
+
+4. **Install Dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Run the Application**
+
+   ```bash
+   python main.py
+   ```
+
+---
+
+### Deactivating the Virtual Environment
+
+When you're done, run the following command to exit the virtual environment:
+
+```bash
+deactivate
+```
+```
+
+/main.py
+```
+import pygame
+import sys
+from simulation.grid import Grid
+from optimizer.controller import AnnealingController
+
+WINDOW_WIDTH = 1200
+WINDOW_HEIGHT = 1000
+
+BG_COLOR = (30, 30, 30)
+TEXT_COLOR = (255, 255, 255)
+COLOR_GREEN = (10, 255, 0)
+
+SIDEBAR_WIDTH = 200
+SIDEBAR_PADDING = 10
+GRAPH_HEIGHT = 100
+GRAPH_WIDTH = 180
+
+HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 30)
+PAUSE_BUTTON_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, WINDOW_HEIGHT - 50, 180, 30)
+
+SIM_SPEED = 1.0  # default time scale
+SIM_SPEED_SECTION_TOP = 370
+SIM_SPEED_SECTION_HEIGHT = 60
+SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTION_TOP + 25, 30, 30)
+SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
+
+
+
+def draw_ui(screen, font, grid, controller, show_heatmap, paused):
+    debug = controller.get_debug_info()
+
+    # Fonts
+    header_font = pygame.font.SysFont("Arial", 20, bold=True)
+    small_font = pygame.font.SysFont("Arial", 16)
+    screen_width = screen.get_width()
+
+
+    # Sidebar background
+    pygame.draw.rect(screen, (50, 50, 50), (screen_width - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, screen.get_height()))
+
+    draw_x = screen_width - SIDEBAR_WIDTH + SIDEBAR_PADDING
+    max_text_width = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING
+
+    # Color-coded status
+    status = debug["status"]
+    if "Evaluating" in status:
+        status_color = (255, 215, 0)  # yellow
+    elif "Better" in status:
+        status_color = (100, 255, 100)  # green
+    elif "Optimization complete" in status:
+        status_color = (50, 245, 50)  # green
+    else:
+        status_color = TEXT_COLOR
+
+    # --- Sim Speed Section Box ---
+    pygame.draw.rect(screen, (40, 40, 40), (screen_width - SIDEBAR_WIDTH + 5, SIM_SPEED_SECTION_TOP, 190, SIM_SPEED_SECTION_HEIGHT), border_radius=8)
+
+    # Draw "Sim Speed:" centered at the top of the box
+    speed_label_font = pygame.font.SysFont("Arial", 15)
+    speed_title = speed_label_font.render("Sim Speed:", True, TEXT_COLOR)
+    speed_title_rect = speed_title.get_rect(center=(screen_width - SIDEBAR_WIDTH + SIDEBAR_WIDTH // 2, SIM_SPEED_SECTION_TOP + 12))
+    screen.blit(speed_title, speed_title_rect)
+
+    # Speed buttons
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_DOWN_RECT, border_radius=4)
+    pygame.draw.rect(screen, (180, 180, 180), SPEED_UP_RECT, border_radius=4)
+
+    arrow_font = pygame.font.SysFont("Arial", 20, bold=True)
+    minus_surface = arrow_font.render("<", True, (0, 0, 0))
+    plus_surface = arrow_font.render(">", True, (0, 0, 0))
+    screen.blit(minus_surface, minus_surface.get_rect(center=SPEED_DOWN_RECT.center))
+    screen.blit(plus_surface, plus_surface.get_rect(center=SPEED_UP_RECT.center))
+
+    # Speed value centered between buttons
+    speed_value_font = pygame.font.SysFont("Arial", 16, bold=True)
+    value_label = speed_value_font.render(f"{SIM_SPEED:.1f}x", True, TEXT_COLOR)
+    value_rect = value_label.get_rect(center=(screen_width - SIDEBAR_WIDTH + 100, SPEED_DOWN_RECT.centery))
+    screen.blit(value_label, value_rect)
+
+    # Dynamic color for temperature (hot → cold)
+    T = debug['temperature']
+    T_min = 1
+    T_max = 150
+    alpha = max(0.0, min(1.0, (T - T_min) / (T_max - T_min)))  # 1.0 = hot, 0.0 = cold
+
+    # Interpolate from red (255, 50, 50) to blue (80, 150, 255)
+    r = int(255 * alpha + 80 * (1 - alpha))
+    g = int(50 * alpha + 150 * (1 - alpha))
+    b = int(50 * alpha + 255 * (1 - alpha))
+    temp_color = (r, g, b)
+
+
+    
+    lines = [
+        (header_font, "Live Traffic Stats:", TEXT_COLOR),
+        (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
+        (small_font, f"Cars Processed: {grid.cars_processed}", TEXT_COLOR),
+        (small_font, f"Live Fitness: {grid.fitness:.2f}", TEXT_COLOR),
+        (header_font, "", TEXT_COLOR),
+        (header_font, "Annealing Debug:", TEXT_COLOR),
+        (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Last Fitness: {debug['current_fitness']:.2f}", TEXT_COLOR),
+        (small_font, f"Temp: {debug['temperature']:.2f}", temp_color),
+        (small_font, f"Last Sim Cars: {debug['cars_processed']}", TEXT_COLOR),
+        (small_font, f"Max Sim Cars: {debug['max_cars']}", TEXT_COLOR),
+        (small_font, f"Next Mutation: {debug['countdown']:.1f}s", TEXT_COLOR),
+        (small_font, "Status:", TEXT_COLOR),
+        (small_font, status, status_color),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (small_font, "", TEXT_COLOR),
+        (header_font, "Fitness Trend", TEXT_COLOR),
+
+    ]
+
+    y = 20
+    for font_type, text, color in lines:
+        label_surface = font_type.render(text, True, color)
+        if label_surface.get_width() > max_text_width:
+            # Truncate text if needed
+            max_chars = int(len(text) * max_text_width / label_surface.get_width()) - 3
+            text = text[:max_chars] + "..."
+            label_surface = font_type.render(text, True, color)
+
+        screen.blit(label_surface, (draw_x, y))
+        y += font_type.get_linesize() + 4
+
+
+    # Fitness graph
+    points = debug.get("fitness_history", [])
+    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
+    graph_surface.fill((20, 20, 20))
+
+    if len(points) > 1:
+        max_val = max(points)
+        min_val = min(points)
+        range_val = max(max_val - min_val, 0.05)
+
+        for i in range(len(points) - 1):
+            x1 = i * GRAPH_WIDTH // (len(points) - 1)
+            x2 = (i + 1) * GRAPH_WIDTH // (len(points) - 1)
+
+            y1 = GRAPH_HEIGHT - int((points[i] - min_val) / range_val * GRAPH_HEIGHT)
+            y2 = GRAPH_HEIGHT - int((points[i + 1] - min_val) / range_val * GRAPH_HEIGHT)
+
+            pygame.draw.line(graph_surface, (0, 255, 0), (x1, y1), (x2, y2), 2)
+            pygame.draw.circle(graph_surface, (0, 255, 0), (x1, y1), 2)
+
+        last_y = GRAPH_HEIGHT - int((points[-1] - min_val) / range_val * GRAPH_HEIGHT)
+        pygame.draw.circle(graph_surface, (0, 255, 0), (GRAPH_WIDTH - 2, last_y), 2)
+    else:
+        placeholder_font = pygame.font.SysFont("Arial", 14)
+        msg = placeholder_font.render("Waiting for data...", True, (150, 150, 150))
+        graph_surface.blit(msg, (10, GRAPH_HEIGHT // 2 - msg.get_height() // 2))
+
+    screen.blit(graph_surface, (draw_x, y))
+
+
+    # Draw the heatmap toggle button
+    checkbox_label = "Show Heatmap"
+    checkbox_font = pygame.font.SysFont("Arial", 16)
+    checkbox_surface = checkbox_font.render(checkbox_label, True, TEXT_COLOR)
+    screen.blit(checkbox_surface, (HEATMAP_TOGGLE_RECT.x, HEATMAP_TOGGLE_RECT.y))
+
+    box_size = 20
+    box_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, box_size, box_size)
+    pygame.draw.rect(screen, (200, 200, 200), box_rect)
+    if show_heatmap:
+        # Draw a black checkmark
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.left + 4, box_rect.centery),
+                            (box_rect.centerx - 2, box_rect.bottom - 4), 2)
+        pygame.draw.line(screen, (0, 0, 0), (box_rect.centerx - 2, box_rect.bottom - 4),
+                            (box_rect.right - 4, box_rect.top + 4), 2)
+        
+    
+
+
+
+    # Draw Start/Pause button
+    if paused:
+        pause_color = (220, 100, 100)  # light red
+        pause_label = "Paused"
+    else:
+        pause_color = (100, 220, 100)  # light green
+        pause_label = "Running"
+
+    pygame.draw.rect(screen, pause_color, PAUSE_BUTTON_RECT, border_radius=6)
+
+    pause_font = pygame.font.SysFont("Arial", 16, bold=True)
+    pause_surface = pause_font.render(pause_label, True, (0, 0, 0))
+    pause_rect = pause_surface.get_rect(center=PAUSE_BUTTON_RECT.center)
+    screen.blit(pause_surface, pause_rect)
+
+
+
+
+
+def main():
+    global SIM_SPEED
+    paused = True 
+    notification_text = ""
+    notification_timer = 0.0
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("Traffic Flow Optimization")
+    clock = pygame.time.Clock()
+    show_heatmap = False
+
+    font = pygame.font.SysFont("Arial", 20)
+    grid = Grid()
+
+    controller = AnnealingController()
+
+    running = True
+    last_status_message = None
+
+    PAUSE_BUTTON_RECT.y = screen.get_height() - 80
+    while running:
+        dt = clock.tick(60) / 1000.0  # Delta time in seconds
+        dt *= SIM_SPEED  # Apply time scaling
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
+                elif event.key == pygame.K_MINUS:
+                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif event.key == pygame.K_h:
+                    show_heatmap = not show_heatmap
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                box_click_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, 20, 20)
+                if box_click_rect.collidepoint(event.pos):
+                    show_heatmap = not show_heatmap
+                if PAUSE_BUTTON_RECT.collidepoint(event.pos):
+                    paused = not paused
+                if SPEED_DOWN_RECT.collidepoint(event.pos):
+                    SIM_SPEED = max(0.5, SIM_SPEED - 0.5)
+                elif SPEED_UP_RECT.collidepoint(event.pos):
+                    SIM_SPEED = min(10.0, SIM_SPEED + 0.5)
+
+
+
+        # Show notification if a new best config was applied
+        if controller.status_message != last_status_message:
+            if controller.status_message == controller.STATUS_BEST_APPLIED:
+                print(f"Notification: {controller.status_message}")
+                notification_text = controller.status_message
+                notification_timer = 2.5
+            last_status_message = controller.status_message
+
+        if not paused:
+            controller.update(dt, grid)
+
+
+        screen.fill(BG_COLOR)
+        
+        scaled_dt = 0 if paused else dt * SIM_SPEED
+        real_dt = 0 if paused else dt
+
+        grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
+
+        draw_ui(screen, font, grid, controller, show_heatmap, paused)
+        if notification_timer > 0:
+            notification_timer -= dt
+            alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
+            notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
+            notif_surface.fill((0, 0, 0, 180))
+            font_big = pygame.font.SysFont("Arial", 24, bold=True)
+            text = font_big.render(notification_text, True, (255, 255, 255))
+            notif_surface.blit(text, (250 - text.get_width() // 2, 10))
+            notif_surface.set_alpha(alpha)
+            sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
+            text_rect = notif_surface.get_rect(center=(sim_width // 2, WINDOW_HEIGHT // 2))
+            screen.blit(notif_surface, text_rect)
+
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
+```
+
+/optimizer/controller.py
+```
+import math
+import random
+import threading
+import pygame
+from optimizer.simulator import Simulator
+from simulation.grid import GRID_ROWS, GRID_COLS, Grid
+
+class AnnealingController:
+    STATUS_INIT = "Evaluating initial config..."
+    STATUS_OPTIMIZATION_DONE = "Optimization complete"
+    STATUS_REJECTED = "Rejected: gridlock"
+    STATUS_APPLYING = "Applying new config..."
+    STATUS_BEST_INITIALIZED = "Config initialized"
+    STATUS_BEST_APPLIED = "Better config found!"
+    STATUS_WAITING = "Waiting for next sim"
+    STATUS_EVALUATING = "Evaluating new config..."
+
+    def __init__(self, run_interval=10, T_start=150, T_min=1, alpha=0.95):
+        self.sim = Simulator()
+        self.T = T_start
+        self.T_min = T_min
+        self.alpha = alpha
+        self.interval = run_interval  # Controls delay between mutations
+        self.timer = 0.0
+        self.optimization_locked = False
+        self.show_heatmap = True
+
+
+        grid = Grid(headless=True)
+
+        # Deliberately bad: favor NS at every intersection, even though EW traffic is heavier
+        self.current_config = [
+            {"ns_duration": 10, "ew_duration": 3} if i % 2 == 0 else {"ns_duration": 3, "ew_duration": 10}
+            for i in range(len(grid.intersections))
+        ]
+
+
+        self.prev_config = [cfg.copy() for cfg in self.current_config]
+        self.best_config = self.current_config.copy()
+        self.offscreen_surface = pygame.Surface((grid.window_width, grid.window_height))
+
+        self.current_fitness = None
+        self.best_fitness = None
+        self.last_throughput = 0.0
+        self.fitness_history = []
+
+        self.last_cars_processed = 0
+        self.max_cars_processed = 0
+
+        self.pending_result = None
+        self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(self.current_config,))
+        self.eval_thread.start()
+
+        self.status_message = self.STATUS_INIT
+
+    def mutate(self, config_list):
+        def clamp(value, min_val, max_val):
+            return max(min_val, min(value, max_val))
+
+        new_config = [cfg.copy() for cfg in config_list]
+
+        num_to_mutate = random.randint(1, 2)
+        for _ in range(num_to_mutate):
+            i = random.randint(0, len(new_config) - 1)
+            new_config[i]["ns_duration"] += random.choice([-1, 1])
+            new_config[i]["ew_duration"] += random.choice([-1, 1])
+            new_config[i]["ns_duration"] = clamp(new_config[i]["ns_duration"], 3, 10)
+            new_config[i]["ew_duration"] = clamp(new_config[i]["ew_duration"], 3, 10)
+
+        return new_config
+
+    def evaluate_in_background(self, new_config):
+        duration = self.get_dynamic_duration()
+        print(f"⏱ Sim duration: {duration}s at T={self.T:.2f}")
+        fitness, throughput, cars_processed = self.sim.run(new_config, duration=duration, return_cars=True)
+        self.pending_result = (new_config, fitness, throughput, cars_processed)
+
+    def get_dynamic_duration(self):
+        temp = max(self.T_min, min(self.T, 100))
+        return int(20 + (90 - 20) * (1 - (temp - self.T_min) / (100 - self.T_min)))
+
+    def update(self, dt, grid):
+        if self.status_message == self.STATUS_OPTIMIZATION_DONE:
+            return
+
+        self.timer += dt
+
+        if self.T <= self.T_min and not self.eval_thread and not self.optimization_locked:
+            print("🌡️ Optimization complete — locking best config")
+            self.current_config = self.best_config
+            self.status_message = self.STATUS_OPTIMIZATION_DONE
+            self.optimization_locked = True 
+
+            for inter, cfg in zip(grid.intersections, self.best_config):
+                inter.ns_duration = cfg["ns_duration"]
+                inter.ew_duration = cfg["ew_duration"]
+                inter.elapsed = 0.0
+                inter.mark_updated()
+
+            grid.cars.clear()
+            grid.total_wait_time = 0.0
+            grid.cars_processed = 0
+            grid.avg_wait_time = 0.0
+
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+            return
+
+        if self.pending_result:
+            new_config, new_fitness, new_throughput, cars_processed = self.pending_result
+            self.pending_result = None
+
+            if cars_processed == 0:
+                print("⚠️ Gridlock detected — rejecting mutation")
+                self.status_message = self.STATUS_REJECTED
+                self.timer = 0
+                return
+
+            self.status_message = self.STATUS_APPLYING
+
+            if self.current_fitness is None:
+                self.current_fitness = new_fitness
+                self.best_fitness = new_fitness
+                self.best_config = new_config
+                
+                # Apply best config visually
+                for inter, cfg in zip(grid.intersections, new_config):
+                    inter.ns_duration = cfg["ns_duration"]
+                    inter.ew_duration = cfg["ew_duration"]
+                    inter.elapsed = 0.0
+                    inter.mark_updated()
+
+                grid.cars.clear()
+                grid.total_wait_time = 0.0
+                grid.cars_processed = 0
+                grid.avg_wait_time = 0.0
+
+                self.status_message = self.STATUS_BEST_INITIALIZED
+
+            else:
+                delta = new_fitness - self.current_fitness
+                accept_prob = math.exp(-delta / self.T) if delta > 0 else 1.0
+
+                if random.random() < accept_prob:
+                    self.current_config = new_config
+                    self.current_fitness = new_fitness
+
+                    if new_fitness < self.best_fitness:
+                        self.best_config = new_config
+                        self.best_fitness = new_fitness
+                        print("🌟 New best fitness:", self.best_fitness)
+
+                        grid.cars.clear()
+                        grid.total_wait_time = 0.0
+                        grid.cars_processed = 0
+                        grid.avg_wait_time = 0.0
+                        self.status_message = self.STATUS_BEST_APPLIED
+
+                else:
+                    print("❌ Rejected new config")
+
+                if self.status_message != self.STATUS_OPTIMIZATION_DONE:
+                    self.T *= self.alpha
+
+
+            self.last_throughput = new_throughput
+            self.last_cars_processed = cars_processed
+            self.max_cars_processed = max(self.max_cars_processed, cars_processed)
+
+            self.fitness_history.append(self.best_fitness)
+            if len(self.fitness_history) > 100:
+                self.fitness_history.pop(0)
+
+            for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
+                inter.ns_duration = cfg["ns_duration"]
+                inter.ew_duration = cfg["ew_duration"]
+                inter.elapsed = 0.0
+
+                if self.T > self.T_min:
+                    if (
+                        cfg["ns_duration"] != old_cfg["ns_duration"] or
+                        cfg["ew_duration"] != old_cfg["ew_duration"]
+                    ):
+                        inter.mark_updated()
+
+            self.prev_config = [cfg.copy() for cfg in self.current_config]
+            if self.status_message not in (self.STATUS_BEST_INITIALIZED, self.STATUS_BEST_APPLIED):
+                self.status_message = self.STATUS_WAITING
+            self.timer = 0
+
+        elif self.timer >= self.interval and not self.eval_thread:
+            self.status_message = self.STATUS_EVALUATING
+            new_config = self.mutate(self.current_config)
+            self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(new_config,))
+            self.eval_thread.start()
+
+    def evaluate_and_cleanup(self, new_config):
+        self.evaluate_in_background(new_config)
+        self.eval_thread = None
+
+    def get_debug_info(self):
+        return {
+            "best_fitness": self.best_fitness if self.best_fitness is not None else 0.0,
+            "current_fitness": self.current_fitness if self.current_fitness is not None else 0.0,
+            "temperature": self.T,
+            "current_config": self.current_config,
+            "countdown": max(0.0, self.interval - self.timer),
+            "fitness_history": self.fitness_history,
+            "status": self.status_message,
+            "throughput": self.last_throughput,
+            "cars_processed": self.last_cars_processed,
+            "max_cars": self.max_cars_processed,
+        }
+```
+
+/optimizer/simulator.py
+```
+import pygame
+import random
+from simulation.grid import Grid
+
+class Simulator:
+    def __init__(self):
+        pygame.init()
+        self.clock = pygame.time.Clock()
+
+    def run(self, config, duration=30, return_cars=False):
+        grid = Grid(headless=True)
+        self.screen = pygame.Surface((grid.window_width, grid.window_height))
+
+
+        # Apply config to each intersection
+        for inter, cfg in zip(grid.intersections, config):
+            inter.ns_duration = cfg["ns_duration"]
+            inter.ew_duration = cfg["ew_duration"]
+            inter.elapsed = random.uniform(0, 3)  # Desync light timers
+
+        warmup = 5.0  # Let traffic settle
+        total_sim_time = duration + warmup
+
+        # Fixed timestep (simulate at 60 FPS)
+        dt = 1.0 / 60.0
+        steps = int(total_sim_time / dt)
+
+        for _ in range(steps):
+            grid.draw(self.screen, dt)
+
+        # Only count stats from final `duration` seconds
+        if return_cars:
+            print(f"Evaluated config with fitness {grid.fitness:.2f} and {grid.cars_processed} cars processed in {duration:.1f}s")
+
+            return grid.fitness, (grid.cars_processed / duration) * 60, grid.cars_processed
+        else:
+            return grid.fitness, (grid.cars_processed / duration) * 60
+```
+
+/requirements.txt
+```
+contourpy==1.3.1
+cycler==0.12.1
+fonttools==4.56.0
+kiwisolver==1.4.8
+matplotlib==3.10.1
+numpy==2.2.4
+packaging==24.2
+pillow==11.1.0
+pygame==2.6.1
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+six==1.17.0
+```
+
+/simulation/car.py
+```
+import pygame
+import math
+
+CAR_WIDTH = 12
+CAR_LENGTH = 20
+CAR_COLOR = (0, 200, 255)
+CAR_STOP_GAP = 15
+CAR_START_GAP = 35
+
+class Car:
+    def __init__(self, x, y, direction, max_speed=100, acceleration=50):
+        self.x = x
+        self.y = y
+        self.direction = direction  # "N", "S", "E", "W"
+        self.velocity = 0.0
+        self.max_speed = max_speed
+        self.acceleration = acceleration
+        self.state = "moving"  # or "waiting"
+        self.stopped_time = 0.0
+        self.length = CAR_LENGTH
+        self.width = CAR_WIDTH
+        self.spawn_x = x
+        self.spawn_y = y
+        self.entered_grid = False
+        self.age = 0.0
+
+
+    def update(self, intersections, dt, cars):
+        self.age += dt
+
+        # Check if car has moved far enough to start obeying intersections
+        if not self.entered_grid:
+            dist_from_start = math.hypot(self.x - self.spawn_x, self.y - self.spawn_y)
+            if dist_from_start > 100:
+                self.entered_grid = True
+
+        near_intersection = (
+            self.entered_grid and 
+            any(self.is_near(inter) and not self.can_go(inter) for inter in intersections)
+        )
+
+        if near_intersection or self.car_blocking_ahead(cars):
+            # Stop if there's a red light or car blocking
+            self.velocity = 0.0
+            self.state = "waiting"
+            self.stopped_time += dt
+            return
+        else:
+            # Accelerate
+            target_speed = self.max_speed * getattr(self, 'road_speed_factor', 1.0)
+            accel_rate = self.acceleration * dt
+
+            # Smooth acceleration using linear interpolation
+            if self.velocity < target_speed:
+                self.velocity += accel_rate
+                self.velocity = min(self.velocity, target_speed)
+            elif self.velocity > target_speed:
+                self.velocity -= accel_rate  # for future use if speed limits drop
+                self.velocity = max(self.velocity, target_speed)
+
+
+        dist = self.velocity * dt
+        if self.direction == "N":
+            self.y -= dist
+        elif self.direction == "S":
+            self.y += dist
+        elif self.direction == "E":
+            self.x += dist
+        elif self.direction == "W":
+            self.x -= dist
+
+    def draw(self, screen):
+        if self.direction in ("N", "S"):
+            rect = pygame.Rect(self.x - CAR_WIDTH // 2, self.y - CAR_LENGTH // 2, CAR_WIDTH, CAR_LENGTH)
+        else:
+            rect = pygame.Rect(self.x - CAR_LENGTH // 2, self.y - CAR_WIDTH // 2, CAR_LENGTH, CAR_WIDTH)
+
+        pygame.draw.rect(screen, CAR_COLOR, rect)
+
+    def is_near(self, intersection, threshold=35):
+        if self.direction == "N":
+            return abs(self.x - intersection.cx) < 10 and 0 < self.front_position() - intersection.cy < threshold
+        if self.direction == "S":
+            return abs(self.x - intersection.cx) < 10 and 0 < intersection.cy - self.front_position() < threshold
+        if self.direction == "E":
+            return abs(self.y - intersection.cy) < 10 and 0 < intersection.cx - self.front_position() < threshold
+        if self.direction == "W":
+            return abs(self.y - intersection.cy) < 10 and 0 < self.front_position() - intersection.cx < threshold
+        return False
+
+
+    def can_go(self, intersection):
+        if intersection.phase == "ALL_RED":
+            return False
+        if self.direction in ("N", "S") and intersection.phase == "NS":
+            return True
+        if self.direction in ("E", "W") and intersection.phase == "EW":
+            return True
+        return False
+
+
+    def car_blocking_ahead(self, cars):
+        for other in cars:
+            if other is self:
+                continue
+            if not self.is_in_same_lane(other):
+                continue
+            edge_gap = self.edge_distance_to(other)
+
+            if self.state == "waiting":
+                if edge_gap < CAR_STOP_GAP:
+                    return True
+            else:
+                if edge_gap < CAR_START_GAP:
+                    return True
+        return False
+
+
+    
+
+    def edge_distance_to(self, other):
+        if self.direction == "N":
+            return (self.y - CAR_LENGTH / 2) - (other.y + CAR_LENGTH / 2)
+        if self.direction == "S":
+            return (other.y - CAR_LENGTH / 2) - (self.y + CAR_LENGTH / 2)
+        if self.direction == "E":
+            return (other.x - CAR_LENGTH / 2) - (self.x + CAR_LENGTH / 2)
+        if self.direction == "W":
+            return (self.x - CAR_LENGTH / 2) - (other.x + CAR_LENGTH / 2)
+        return 9999
+
+    
+
+    def is_in_same_lane(self, other):
+        if self.direction == "N" and other.direction == "N":
+            return abs(self.x - other.x) < 10 and self.y > other.y
+        if self.direction == "S" and other.direction == "S":
+            return abs(self.x - other.x) < 10 and self.y < other.y
+        if self.direction == "E" and other.direction == "E":
+            return abs(self.y - other.y) < 10 and self.x < other.x
+        if self.direction == "W" and other.direction == "W":
+            return abs(self.y - other.y) < 10 and self.x > other.x
+        return False
+
+    def distance_to(self, other):
+        if self.direction in ("N", "S"):
+            return abs(self.y - other.y)
+        else:
+            return abs(self.x - other.x)
+        
+    def front_position(self):
+        if self.direction == "N":
+            return self.y - self.length / 2
+        elif self.direction == "S":
+            return self.y + self.length / 2
+        elif self.direction == "E":
+            return self.x + self.length / 2
+        elif self.direction == "W":
+            return self.x - self.length / 2
+        
+    def get_nearest_intersection(self, intersections):
+        min_dist = float("inf")
+        nearest = None
+        for inter in intersections:
+            dist = math.hypot(self.x - inter.cx, self.y - inter.cy)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = inter
+        return nearest
+```
+
+/simulation/grid.py
+```
+import pygame
+import random
+from simulation.intersection import Intersection
+from simulation.car import Car
+
+GRID_ROWS = 4
+GRID_COLS = 5
+ROAD_WIDTH = 40
+SIDEBAR_WIDTH = 200
+CAR_SPEED = 140
+CAR_ACCEL = 50
+SCREEN_MARGIN = 60
+HEAVY_CONGESTION_THRESHOLD = 15
+SPILLOVER_THRESHOLD = 5
+
+
+class Grid:
+    def __init__(self, headless=False):
+        self.headless = headless
+
+        info = pygame.display.Info()
+        self.window_width = info.current_w
+        self.window_height = info.current_h
+
+        self.grid_width = self.window_width - SIDEBAR_WIDTH
+        self.grid_height = self.window_height
+
+        self.col_positions = self.compute_positions(
+            GRID_COLS,
+            left=SCREEN_MARGIN,
+            right=self.window_width - SIDEBAR_WIDTH - SCREEN_MARGIN
+        )
+
+        self.row_positions = self.compute_positions(
+            GRID_ROWS,
+            top=SCREEN_MARGIN,
+            bottom=self.window_height - SCREEN_MARGIN
+        )
+
+        self.cars = []
+        self.spawn_timer = 0.0
+        self.spawn_interval = 0.5 if headless else 1
+
+        self.total_wait_time = 0.0
+        self.cars_processed = 0
+        self.avg_wait_time = 0.0
+        self.fitness = 0.0
+
+        self.road_speed_limits = {
+            "horizontal": {},
+            "vertical": {}
+        }
+
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS - 1):
+                self.road_speed_limits["horizontal"][(row, col)] = 1.0
+        for row in range(GRID_ROWS - 1):
+            for col in range(GRID_COLS):
+                self.road_speed_limits["vertical"][(row, col)] = 0.5
+
+        self.intersections = []
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS):
+                cx = self.col_positions[col]
+                cy = self.row_positions[row]
+                inter = Intersection(col, row, cx, cy, GRID_ROWS, GRID_COLS)
+                inter.waiting_cars = 0
+                inter.waiting_time_total = 0.0
+                inter.prev_waiting_cars = 0
+                inter.prev_waiting_time = 0.0
+                inter.congestion_heat = 0.0
+                self.intersections.append(inter)
+
+    def compute_positions(self, count, left=None, right=None, top=None, bottom=None):
+        if left is not None and right is not None:
+            spacing = (right - left) / (count - 1)
+            return [left + i * spacing for i in range(count)]
+        elif top is not None and bottom is not None:
+            spacing = (bottom - top) / (count - 1)
+            return [top + i * spacing for i in range(count)]
+        else:
+            raise ValueError("Must specify left/right or top/bottom bounds.")
+
+    def get_speed_limit(self, car):
+        if car.direction in ("E", "W"):
+            row = min(range(GRID_ROWS), key=lambda r: abs(car.y - self.row_positions[r]))
+            col = max(0, min(GRID_COLS - 2, sum(car.x > cp for cp in self.col_positions) - 1))
+            return self.road_speed_limits["horizontal"].get((row, col), 1.0)
+        else:
+            col = min(range(GRID_COLS), key=lambda c: abs(car.x - self.col_positions[c]))
+            row = max(0, min(GRID_ROWS - 2, sum(car.y > rp for rp in self.row_positions) - 1))
+            return self.road_speed_limits["vertical"].get((row, col), 1.0)
+
+    def draw(self, screen, dt, show_heatmap=True, real_dt=None):
+        for cy in self.row_positions:
+            pygame.draw.rect(screen, (100, 100, 100), (
+                self.col_positions[0],
+                cy - ROAD_WIDTH // 2,
+                self.col_positions[-1] - self.col_positions[0],
+                ROAD_WIDTH
+            ))
+
+        for cx in self.col_positions:
+            pygame.draw.rect(screen, (100, 100, 100), (
+                cx - ROAD_WIDTH // 2,
+                self.row_positions[0],
+                ROAD_WIDTH,
+                self.row_positions[-1] - self.row_positions[0]
+            ))
+
+        for inter in self.intersections:
+            inter.update(dt)
+            inter.draw(screen)
+
+        for car in self.cars:
+            car.road_speed_factor = self.get_speed_limit(car)
+            car.update(self.intersections, dt, self.cars)
+            car.draw(screen)
+            nearest = car.get_nearest_intersection(self.intersections)
+            if car.state == "waiting" and nearest:
+                nearest.waiting_cars += 1
+                nearest.waiting_time_total += dt 
+            else:
+                if nearest:
+                    nearest.waiting_time_total += 0
+
+        for inter in self.intersections:
+            congestion_signal = inter.waiting_cars
+            used_dt = real_dt if real_dt is not None else dt
+            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.85 + congestion_signal * used_dt * 12)
+
+            if inter.congestion_heat > 0.2:
+                intensity = min(255, int(inter.congestion_heat * 40))
+                glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+                if show_heatmap:
+                    pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
+                    screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+
+
+        for inter in self.intersections:
+            inter.prev_waiting_cars = inter.waiting_cars
+            inter.prev_waiting_time = inter.waiting_time_total
+            inter.waiting_cars = 0
+            inter.waiting_time_total = 0.0
+
+        remaining = []
+        for c in self.cars:
+            if -50 <= c.x <= self.window_width - SIDEBAR_WIDTH + 50 and -50 <= c.y <= self.window_height + 50:
+                remaining.append(c)
+            else:
+                self.total_wait_time += c.stopped_time
+                self.cars_processed += 1
+        self.cars = remaining
+
+        self.avg_wait_time = self.total_wait_time / self.cars_processed if self.cars_processed > 0 else 0.0
+
+        self.spawn_timer += dt
+        if self.headless:
+            while self.spawn_timer >= self.spawn_interval:
+                self.spawn_car()
+                self.spawn_timer -= self.spawn_interval
+        else:
+            if self.spawn_timer >= self.spawn_interval:
+                self.spawn_car()
+                self.spawn_timer = 0
+
+        mildly_stopped = sum(1 for c in self.cars if c.stopped_time > 10.0)
+        severely_stopped = sum(1 for c in self.cars if c.stopped_time > 20.0)
+        queued = len(self.cars)
+        intersection_congestion = sum(i.prev_waiting_cars for i in self.intersections)
+        intersection_wait_penalty = sum(i.prev_waiting_time for i in self.intersections)
+        heavy_congestion_penalty = max(0, queued - HEAVY_CONGESTION_THRESHOLD)
+
+        car_weight = 0.05
+        time_weight = 0.02
+        norm_waiting_cars = sum(i.prev_waiting_cars * car_weight for i in self.intersections)
+        norm_waiting_time = sum(i.prev_waiting_time * time_weight for i in self.intersections)
+        avg_age = sum(c.age for c in self.cars) / len(self.cars) if self.cars else 0
+        spillovers = sum(1 for i in self.intersections if i.prev_waiting_cars > SPILLOVER_THRESHOLD)
+        low_throughput_penalty = 0.0
+        if self.cars_processed < 10:
+            low_throughput_penalty = 5.0
+
+        self.fitness = (
+            0.4 * self.avg_wait_time +
+            1.0 * mildly_stopped +
+            3.0 * severely_stopped +
+            0.15 * heavy_congestion_penalty +
+            0.05 * intersection_congestion +
+            0.02 * intersection_wait_penalty +
+            norm_waiting_cars +
+            norm_waiting_time -
+            0.05 * self.cars_processed + 
+            0.1 * avg_age +
+            0.3 * spillovers +
+            low_throughput_penalty
+        )
+        self.total_congestion = intersection_congestion
+
+    def spawn_car(self):
+        edge = random.choices(["N", "S", "E", "W"], weights=[1, 1, 3, 3])[0]
+
+        if edge == "N":
+            col = random.choice(self.col_positions)
+            x, y, d = col, self.window_height, "N"
+        elif edge == "S":
+            col = random.choice(self.col_positions)
+            x, y, d = col, 0, "S"
+        elif edge == "E":
+            row = random.choice(self.row_positions)
+            x, y, d = 0, row, "E"
+        elif edge == "W":
+            row = random.choice(self.row_positions)
+            x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
+
+        self.cars.append(Car(x, y, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+```
+```

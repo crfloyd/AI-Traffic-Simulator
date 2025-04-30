@@ -91,7 +91,7 @@ class Grid:
             row = max(0, min(GRID_ROWS - 2, sum(car.y > rp for rp in self.row_positions) - 1))
             return self.road_speed_limits["vertical"].get((row, col), 1.0)
 
-    def draw(self, screen, dt, show_heatmap=True):
+    def draw(self, screen, dt, show_heatmap=True, real_dt=None):
         for cy in self.row_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
                 self.col_positions[0],
@@ -117,20 +117,29 @@ class Grid:
             car.update(self.intersections, dt, self.cars)
             car.draw(screen)
             nearest = car.get_nearest_intersection(self.intersections)
-            if car.state == "waiting" and nearest:
+            if nearest and car.is_actively_waiting(nearest):
                 nearest.waiting_cars += 1
                 nearest.waiting_time_total += dt
 
-        for inter in self.intersections:
-            congestion_signal = inter.waiting_cars + inter.waiting_time_total
-            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.58 + congestion_signal * dt * 2)
+            else:
+                if nearest:
+                    nearest.waiting_time_total += 0
 
-            if inter.congestion_heat > 2.0:
-                intensity = min(150, int(inter.congestion_heat * 10))
+        for inter in self.intersections:
+            congestion_signal = inter.waiting_cars
+            used_dt = real_dt if real_dt is not None else dt
+
+            inter.congestion_heat = max(0.0, inter.congestion_heat * 0.92 + congestion_signal * used_dt * 2.0)
+            inter.congestion_heat = min(inter.congestion_heat, 10.0)
+
+            if inter.congestion_heat > 2.5:
+                intensity = min(255, int((inter.congestion_heat - 2.0) * 35))
                 glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
                 if show_heatmap:
                     pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
                     screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+
+
 
         for inter in self.intersections:
             inter.prev_waiting_cars = inter.waiting_cars

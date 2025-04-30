@@ -10,9 +10,9 @@ class AnnealingController:
     STATUS_OPTIMIZATION_DONE = "Optimization complete"
     STATUS_REJECTED = "Rejected: gridlock"
     STATUS_APPLYING = "Applying new config..."
-    STATUS_BEST_INITIALIZED = "UI reset: Best config initialized"
-    STATUS_BEST_APPLIED = "🌟 New best config applied"
-    STATUS_WAITING = "Waiting for next mutation..."
+    STATUS_BEST_INITIALIZED = "Config initialized"
+    STATUS_BEST_APPLIED = "Better config found!"
+    STATUS_WAITING = "Waiting for next sim"
     STATUS_EVALUATING = "Evaluating new config..."
 
     def __init__(self, run_interval=10, T_start=150, T_min=1, alpha=0.95):
@@ -121,12 +121,19 @@ class AnnealingController:
                 self.current_fitness = new_fitness
                 self.best_fitness = new_fitness
                 self.best_config = new_config
-                print("🗰 Initialized current and best fitness")
+                
+                # Apply best config visually
+                for inter, cfg in zip(grid.intersections, new_config):
+                    inter.ns_duration = cfg["ns_duration"]
+                    inter.ew_duration = cfg["ew_duration"]
+                    inter.elapsed = 0.0
+                    inter.mark_updated()
 
                 grid.cars.clear()
                 grid.total_wait_time = 0.0
                 grid.cars_processed = 0
                 grid.avg_wait_time = 0.0
+
                 self.status_message = self.STATUS_BEST_INITIALIZED
 
             else:
