@@ -23,7 +23,7 @@ class AnnealingController:
         self.T = T_start
         self.T_min = T_min
         self.alpha = alpha
-        self.interval = run_interval  # Controls delay between mutations
+        self.interval = run_interval
         self.timer = 0.0
         self.optimization_locked = False
         self.show_heatmap = True
@@ -38,7 +38,6 @@ class AnnealingController:
 
         self.prev_config = [cfg.copy() for cfg in self.current_config]
         self.best_config = self.current_config.copy()
-        # self.offscreen_surface = pygame.Surface((grid.window_width, grid.window_height))
 
         self.current_fitness = None
         self.best_fitness = None

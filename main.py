@@ -25,7 +25,7 @@ SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTI
 SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
 
 
-def draw_ui(screen, font, grid, controller, show_heatmap, paused, fps):
+def draw_ui(screen, graph_surface, font, grid, controller, show_heatmap, paused, fps):
     debug = controller.get_debug_info()
 
     # Fonts
@@ -129,7 +129,6 @@ def draw_ui(screen, font, grid, controller, show_heatmap, paused, fps):
 
     # Fitness graph
     points = debug.get("fitness_history", [])
-    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
     graph_surface.fill((20, 20, 20))
 
     if len(points) > 1:
@@ -213,7 +212,11 @@ def main():
     running = True
     last_status_message = None
 
+    graph_surface = pygame.Surface((GRAPH_WIDTH, GRAPH_HEIGHT))
+    notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
+    pause_overlay = pygame.Surface((500, 50), pygame.SRCALPHA)
     PAUSE_BUTTON_RECT.y = screen.get_height() - 80
+    
     while running:
         dt = clock.tick(60) / 1000.0 
         fps = clock.get_fps()
@@ -261,7 +264,7 @@ def main():
 
         grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
 
-        draw_ui(screen, font, grid, controller, show_heatmap, paused, fps)
+        draw_ui(screen, graph_surface, font, grid, controller, show_heatmap, paused, fps)
 
         sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
         text_rect = pygame.Rect(0, 0, 500, 50)
@@ -271,7 +274,6 @@ def main():
         if notification_timer > 0:
             notification_timer -= dt
             alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
-            notif_surface = pygame.Surface((500, 50), pygame.SRCALPHA)
             notif_surface.fill((0, 0, 0, 180))
             font_big = pygame.font.SysFont("Arial", 24, bold=True)
             text = font_big.render(notification_text, True, (255, 255, 255))
@@ -281,7 +283,6 @@ def main():
 
         # "Paused" overlay
         if paused:
-            pause_overlay = pygame.Surface((500, 50), pygame.SRCALPHA)
             pause_overlay.fill((0, 0, 0, 180))
             pause_font = pygame.font.SysFont("Arial", 24, bold=True)
             pause_text = pause_font.render("⏸ Paused", True, (255, 255, 255))

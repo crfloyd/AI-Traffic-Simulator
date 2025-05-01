@@ -9,7 +9,6 @@ class Simulator:
 
     def run(self, config, duration=30, return_cars=False):
         grid = Grid(headless=True)
-        # self.screen = pygame.Surface((grid.window_width, grid.window_height))
 
         # Apply config to each intersection
         for inter, cfg in zip(grid.intersections, config):

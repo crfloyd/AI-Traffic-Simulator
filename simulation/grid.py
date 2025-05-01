@@ -23,7 +23,7 @@ class Grid:
         info = pygame.display.Info()
         self.window_width = info.current_w
         self.window_height = info.current_h
-
+        self.glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
         self.grid_width = self.window_width - SIDEBAR_WIDTH
         self.grid_height = self.window_height
 
@@ -128,10 +128,10 @@ class Grid:
         for inter in self.intersections:
             if inter.congestion_heat > 0.5:
                 intensity = min(255, int((inter.congestion_heat - 0.5) * 40))
-                glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+                
                 if show_heatmap:
-                    pygame.draw.circle(glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
-                    screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
+                    pygame.draw.circle(self.glow_surface, (255, 0, 0, intensity), (ROAD_WIDTH, ROAD_WIDTH), ROAD_WIDTH)
+                    screen.blit(self.glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
 
 
     def spawn_car(self):
@@ -167,7 +167,6 @@ class Grid:
 
             # Rule 2: any car near this intersection with wait time > 4s
             for car in self.cars:
-                nearest = car.get_nearest_intersection(self.intersections)
                 dx = abs(car.x - inter.cx)
                 dy = abs(car.y - inter.cy)
                 if dx < ROAD_WIDTH // 2 and dy < ROAD_WIDTH // 2 and car.is_actively_waiting(inter) and car.stopped_time > 4.0:
