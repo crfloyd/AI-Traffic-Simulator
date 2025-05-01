@@ -2,6 +2,7 @@ import pygame
 import random
 from simulation.intersection import Intersection
 from simulation.car import Car
+from simulation.car import compute_lane_offset
 
 GRID_ROWS = 4
 GRID_COLS = 5
@@ -219,4 +220,7 @@ class Grid:
             row = random.choice(self.row_positions)
             x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
 
-        self.cars.append(Car(x, y, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+    
+        dx, dy = compute_lane_offset(d)
+        self.cars.append(Car(x + dx, y  + dy, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+

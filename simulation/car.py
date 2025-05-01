@@ -132,15 +132,19 @@ class Car:
     
 
     def is_in_same_lane(self, other):
+        lane_tolerance = 4  # Must be tighter now that cars are offset
+
         if self.direction == "N" and other.direction == "N":
-            return abs(self.x - other.x) < 10 and self.y > other.y
+            return abs(self.x - other.x) < lane_tolerance and self.y > other.y
         if self.direction == "S" and other.direction == "S":
-            return abs(self.x - other.x) < 10 and self.y < other.y
+            return abs(self.x - other.x) < lane_tolerance and self.y < other.y
         if self.direction == "E" and other.direction == "E":
-            return abs(self.y - other.y) < 10 and self.x < other.x
+            return abs(self.y - other.y) < lane_tolerance and self.x < other.x
         if self.direction == "W" and other.direction == "W":
-            return abs(self.y - other.y) < 10 and self.x > other.x
+            return abs(self.y - other.y) < lane_tolerance and self.x > other.x
+
         return False
+
 
     def distance_to(self, other):
         if self.direction in ("N", "S"):
@@ -171,3 +175,14 @@ class Car:
 
     def is_actively_waiting(self, intersection):
         return self.state == "waiting" and not self.can_go(intersection) and self.velocity < 0.01
+    
+    
+LANE_OFFSET = 10
+def compute_lane_offset(direction, lane_spacing=LANE_OFFSET):
+    if direction == 'N':  return (+lane_spacing, 0)   # right side of vertical road
+    if direction == 'S':  return (-lane_spacing, 0)   # left side of vertical road
+    if direction == 'E':  return (0, +lane_spacing)   # bottom side of horizontal road ✅ flip
+    if direction == 'W':  return (0, -lane_spacing)   # top side of horizontal road ✅ flip
+
+
+
