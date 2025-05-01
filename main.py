@@ -263,8 +263,13 @@ def main():
         real_dt = 0 if paused else dt
 
         grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
-
         draw_ui(screen, font, grid, controller, show_heatmap, paused)
+
+        sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
+        text_rect = pygame.Rect(0, 0, 500, 50)
+        text_rect.center = (sim_width // 2, WINDOW_HEIGHT // 2)
+
+        # "Better Config" notification
         if notification_timer > 0:
             notification_timer -= dt
             alpha = int(255 * min(1.0, notification_timer / 0.5)) if notification_timer < 0.5 else 255
@@ -274,9 +279,17 @@ def main():
             text = font_big.render(notification_text, True, (255, 255, 255))
             notif_surface.blit(text, (250 - text.get_width() // 2, 10))
             notif_surface.set_alpha(alpha)
-            sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
-            text_rect = notif_surface.get_rect(center=(sim_width // 2, WINDOW_HEIGHT // 2))
             screen.blit(notif_surface, text_rect)
+
+        # "Paused" overlay
+        if paused:
+            pause_overlay = pygame.Surface((500, 50), pygame.SRCALPHA)
+            pause_overlay.fill((0, 0, 0, 180))
+            pause_font = pygame.font.SysFont("Arial", 24, bold=True)
+            pause_text = pause_font.render("⏸ Paused", True, (255, 255, 255))
+            pause_overlay.blit(pause_text, (250 - pause_text.get_width() // 2, 10))
+            pause_overlay.set_alpha(200)
+            screen.blit(pause_overlay, text_rect)
 
         pygame.display.flip()
 
