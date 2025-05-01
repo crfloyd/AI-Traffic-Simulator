@@ -15,7 +15,7 @@ SIDEBAR_PADDING = 10
 GRAPH_HEIGHT = 100
 GRAPH_WIDTH = 180
 
-HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 30)
+HEATMAP_TOGGLE_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, 590, 180, 50)
 PAUSE_BUTTON_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, WINDOW_HEIGHT - 50, 180, 30)
 
 SIM_SPEED = 1.0  # default time scale
@@ -25,8 +25,7 @@ SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTI
 SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
 
 
-
-def draw_ui(screen, font, grid, controller, show_heatmap, paused):
+def draw_ui(screen, font, grid, controller, show_heatmap, paused, fps):
     debug = controller.get_debug_info()
 
     # Fonts
@@ -40,6 +39,8 @@ def draw_ui(screen, font, grid, controller, show_heatmap, paused):
 
     draw_x = screen_width - SIDEBAR_WIDTH + SIDEBAR_PADDING
     max_text_width = SIDEBAR_WIDTH - 2 * SIDEBAR_PADDING
+
+
 
     # Color-coded status
     status = debug["status"]
@@ -88,14 +89,13 @@ def draw_ui(screen, font, grid, controller, show_heatmap, paused):
     g = int(50 * alpha + 150 * (1 - alpha))
     b = int(50 * alpha + 255 * (1 - alpha))
     temp_color = (r, g, b)
-
-
     
     lines = [
         (header_font, "Live Traffic Stats:", TEXT_COLOR),
+        (small_font, f"FPS: {fps:.1f}", TEXT_COLOR),
         (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
-        (small_font, f"Cars Processed: {grid.cars_processed}", TEXT_COLOR),
-        (small_font, f"Live Fitness: {grid.fitness:.2f}", TEXT_COLOR),
+        (small_font, f"Cars in grid: {debug['cars_in_grid']:.2f}", TEXT_COLOR),
+        
         (header_font, "", TEXT_COLOR),
         (header_font, "Annealing Debug:", TEXT_COLOR),
         (small_font, f"Best Fitness: {debug['best_fitness']:.2f}", TEXT_COLOR),
@@ -204,22 +204,19 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
     pygame.display.set_caption("Traffic Flow Optimization")
-    clock = pygame.time.Clock()
     show_heatmap = False
 
     font = pygame.font.SysFont("Arial", 20)
     grid = Grid()
-
-    controller = AnnealingController()
-
+    controller = AnnealingController(grid=grid)
+    clock = pygame.time.Clock()
     running = True
     last_status_message = None
 
     PAUSE_BUTTON_RECT.y = screen.get_height() - 80
     while running:
-        dt = clock.tick(60) / 1000.0  # Delta time in seconds
-        dt *= SIM_SPEED  # Apply time scaling
-
+        dt = clock.tick(60) / 1000.0 
+        fps = clock.get_fps()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -254,7 +251,7 @@ def main():
             last_status_message = controller.status_message
 
         if not paused:
-            controller.update(dt, grid)
+            controller.update(dt * SIM_SPEED)
 
 
         screen.fill(BG_COLOR)
@@ -263,7 +260,8 @@ def main():
         real_dt = 0 if paused else dt
 
         grid.draw(screen, scaled_dt, show_heatmap=show_heatmap, real_dt=real_dt)
-        draw_ui(screen, font, grid, controller, show_heatmap, paused)
+
+        draw_ui(screen, font, grid, controller, show_heatmap, paused, fps)
 
         sim_width = WINDOW_WIDTH - SIDEBAR_WIDTH
         text_rect = pygame.Rect(0, 0, 500, 50)

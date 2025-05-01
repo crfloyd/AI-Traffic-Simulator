@@ -78,15 +78,19 @@ class Car:
         pygame.draw.rect(screen, CAR_COLOR, rect)
 
     def is_near(self, intersection, threshold=35):
+        lane_tolerance = 16  
+
         if self.direction == "N":
-            return abs(self.x - intersection.cx) < 10 and 0 < self.front_position() - intersection.cy < threshold
+            return abs(self.x - intersection.cx) < lane_tolerance and 0 < self.front_position() - intersection.cy < threshold
         if self.direction == "S":
-            return abs(self.x - intersection.cx) < 10 and 0 < intersection.cy - self.front_position() < threshold
+            return abs(self.x - intersection.cx) < lane_tolerance and 0 < intersection.cy - self.front_position() < threshold
         if self.direction == "E":
-            return abs(self.y - intersection.cy) < 10 and 0 < intersection.cx - self.front_position() < threshold
+            return abs(self.y - intersection.cy) < lane_tolerance and 0 < intersection.cx - self.front_position() < threshold
         if self.direction == "W":
-            return abs(self.y - intersection.cy) < 10 and 0 < self.front_position() - intersection.cx < threshold
+            return abs(self.y - intersection.cy) < lane_tolerance and 0 < self.front_position() - intersection.cx < threshold
+
         return False
+
 
 
     def can_go(self, intersection):

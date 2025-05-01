@@ -15,7 +15,10 @@ class AnnealingController:
     STATUS_WAITING = "Waiting for next sim"
     STATUS_EVALUATING = "Evaluating new config..."
 
-    def __init__(self, run_interval=10, T_start=150, T_min=1, alpha=0.95):
+    def __init__(self, grid, run_interval=10, T_start=150, T_min=1, alpha=0.95):
+        self.grid = grid
+        self.eval_thread = None
+        self.pending_first_eval = True
         self.sim = Simulator()
         self.T = T_start
         self.T_min = T_min
@@ -26,18 +29,16 @@ class AnnealingController:
         self.show_heatmap = True
 
 
-        grid = Grid(headless=True)
-
-        # Deliberately bad: favor NS at every intersection, even though EW traffic is heavier
+        num_intersections = GRID_ROWS * GRID_COLS
         self.current_config = [
             {"ns_duration": 10, "ew_duration": 3} if i % 2 == 0 else {"ns_duration": 3, "ew_duration": 10}
-            for i in range(len(grid.intersections))
+            for i in range(num_intersections)
         ]
 
 
         self.prev_config = [cfg.copy() for cfg in self.current_config]
         self.best_config = self.current_config.copy()
-        self.offscreen_surface = pygame.Surface((grid.window_width, grid.window_height))
+        # self.offscreen_surface = pygame.Surface((grid.window_width, grid.window_height))
 
         self.current_fitness = None
         self.best_fitness = None
@@ -72,14 +73,23 @@ class AnnealingController:
     def evaluate_in_background(self, new_config):
         duration = self.get_dynamic_duration()
         print(f"⏱ Sim duration: {duration}s at T={self.T:.2f}")
+        import time
+        start = time.time()
         fitness, throughput, cars_processed = self.sim.run(new_config, duration=duration, return_cars=True)
+        print(f"[Eval Done] Real time: {time.time() - start:.3f}s")
         self.pending_result = (new_config, fitness, throughput, cars_processed)
 
     def get_dynamic_duration(self):
         temp = max(self.T_min, min(self.T, 100))
         return int(20 + (90 - 20) * (1 - (temp - self.T_min) / (100 - self.T_min)))
 
-    def update(self, dt, grid):
+    def update(self, dt):
+        if getattr(self, "pending_first_eval", False):
+            self.status_message = self.STATUS_EVALUATING
+            self.eval_thread = threading.Thread(target=self.evaluate_and_cleanup, args=(self.current_config,))
+            self.eval_thread.start()
+            self.pending_first_eval = False
+            
         if self.status_message == self.STATUS_OPTIMIZATION_DONE:
             return
 
@@ -91,16 +101,16 @@ class AnnealingController:
             self.status_message = self.STATUS_OPTIMIZATION_DONE
             self.optimization_locked = True 
 
-            for inter, cfg in zip(grid.intersections, self.best_config):
+            for inter, cfg in zip(self.grid.intersections, self.best_config):
                 inter.ns_duration = cfg["ns_duration"]
                 inter.ew_duration = cfg["ew_duration"]
                 inter.elapsed = 0.0
                 inter.mark_updated()
 
-            grid.cars.clear()
-            grid.total_wait_time = 0.0
-            grid.cars_processed = 0
-            grid.avg_wait_time = 0.0
+            self.grid.cars.clear()
+            self.grid.total_wait_time = 0.0
+            self.grid.cars_processed = 0
+            self.grid.avg_wait_time = 0.0
 
             self.prev_config = [cfg.copy() for cfg in self.current_config]
             return
@@ -110,7 +120,7 @@ class AnnealingController:
             self.pending_result = None
 
             if cars_processed == 0:
-                print("⚠️ Gridlock detected — rejecting mutation")
+                print("⚠️ Grid gridlock detected — rejecting mutation")
                 self.status_message = self.STATUS_REJECTED
                 self.timer = 0
                 return
@@ -123,16 +133,16 @@ class AnnealingController:
                 self.best_config = new_config
                 
                 # Apply best config visually
-                for inter, cfg in zip(grid.intersections, new_config):
+                for inter, cfg in zip(self.grid.intersections, new_config):
                     inter.ns_duration = cfg["ns_duration"]
                     inter.ew_duration = cfg["ew_duration"]
                     inter.elapsed = 0.0
                     inter.mark_updated()
 
-                grid.cars.clear()
-                grid.total_wait_time = 0.0
-                grid.cars_processed = 0
-                grid.avg_wait_time = 0.0
+                self.grid.cars.clear()
+                self.grid.total_wait_time = 0.0
+                self.grid.cars_processed = 0
+                self.grid.avg_wait_time = 0.0
 
                 self.status_message = self.STATUS_BEST_INITIALIZED
 
@@ -149,10 +159,10 @@ class AnnealingController:
                         self.best_fitness = new_fitness
                         print("🌟 New best fitness:", self.best_fitness)
 
-                        grid.cars.clear()
-                        grid.total_wait_time = 0.0
-                        grid.cars_processed = 0
-                        grid.avg_wait_time = 0.0
+                        self.grid.cars.clear()
+                        self.grid.total_wait_time = 0.0
+                        self.grid.cars_processed = 0
+                        self.grid.avg_wait_time = 0.0
                         self.status_message = self.STATUS_BEST_APPLIED
 
                 else:
@@ -170,7 +180,7 @@ class AnnealingController:
             if len(self.fitness_history) > 100:
                 self.fitness_history.pop(0)
 
-            for inter, cfg, old_cfg in zip(grid.intersections, self.current_config, self.prev_config):
+            for inter, cfg, old_cfg in zip(self.grid.intersections, self.current_config, self.prev_config):
                 inter.ns_duration = cfg["ns_duration"]
                 inter.ew_duration = cfg["ew_duration"]
                 inter.elapsed = 0.0
@@ -209,4 +219,7 @@ class AnnealingController:
             "throughput": self.last_throughput,
             "cars_processed": self.last_cars_processed,
             "max_cars": self.max_cars_processed,
+            "cars_in_grid": len(self.grid.cars),
+            "avg_stopped_time": sum(c.stopped_time for c in self.grid.cars) / len(self.grid.cars) if self.grid.cars else 0.0,
+
         }

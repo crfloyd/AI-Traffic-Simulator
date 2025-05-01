@@ -18,7 +18,8 @@ SPILLOVER_THRESHOLD = 5
 class Grid:
     def __init__(self, headless=False):
         self.headless = headless
-
+        self.max_cars = 40 if self.headless else 40
+        self.heat_timer = 0
         info = pygame.display.Info()
         self.window_width = info.current_w
         self.window_height = info.current_h
@@ -93,6 +94,14 @@ class Grid:
             return self.road_speed_limits["vertical"].get((row, col), 1.0)
 
     def draw(self, screen, dt, show_heatmap=True, real_dt=None):
+        # Always run simulation logic
+        self.update_only(dt, real_dt)
+
+        # Skip rendering if headless or no screen
+        if self.headless or screen is None:
+            return
+
+        # --- Visual-only rendering ---
         for cy in self.row_positions:
             pygame.draw.rect(screen, (100, 100, 100), (
                 self.col_positions[0],
@@ -110,30 +119,13 @@ class Grid:
             ))
 
         for inter in self.intersections:
-            inter.update(dt)
             inter.draw(screen)
 
         for car in self.cars:
-            car.road_speed_factor = self.get_speed_limit(car)
-            car.update(self.intersections, dt, self.cars)
             car.draw(screen)
-            nearest = car.get_nearest_intersection(self.intersections)
-            if nearest and car.is_actively_waiting(nearest):
-                nearest.waiting_cars += 1
-                nearest.waiting_time_total += dt
 
-            else:
-                if nearest:
-                    nearest.waiting_time_total += 0
-
+        # Now loop over intersections only to render heat glow
         for inter in self.intersections:
-            used_dt = real_dt if real_dt is not None else dt
-            pressure = inter.waiting_cars
-
-            # Balanced heat model
-            inter.congestion_heat = inter.congestion_heat * 0.90 + pressure * used_dt * 1.5
-            inter.congestion_heat = max(0.0, min(inter.congestion_heat, 10.0))
-
             if inter.congestion_heat > 0.5:
                 intensity = min(255, int((inter.congestion_heat - 0.5) * 40))
                 glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
@@ -142,13 +134,79 @@ class Grid:
                     screen.blit(glow_surface, (inter.cx - ROAD_WIDTH, inter.cy - ROAD_WIDTH))
 
 
+    def spawn_car(self):
+        if len(self.cars) >= self.max_cars:
+            return
+        edge = random.choices(["N", "S", "E", "W"], weights=[1, 1, 3, 3])[0]
 
+        if edge == "N":
+            col = random.choice(self.col_positions)
+            x, y, d = col, self.window_height, "N"
+        elif edge == "S":
+            col = random.choice(self.col_positions)
+            x, y, d = col, 0, "S"
+        elif edge == "E":
+            row = random.choice(self.row_positions)
+            x, y, d = 0, row, "E"
+        elif edge == "W":
+            row = random.choice(self.row_positions)
+            x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
+
+    
+        dx, dy = compute_lane_offset(d)
+        self.cars.append(Car(x + dx, y  + dy, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
+
+    
+    def update_congestion_heat(self, dt):
+        for inter in self.intersections:
+            should_build_heat = False
+
+            # Rule 1: multiple cars waiting (e.g. 3+)
+            if inter.waiting_cars >= 3:
+                should_build_heat = True
+
+            # Rule 2: any car near this intersection with wait time > 4s
+            for car in self.cars:
+                nearest = car.get_nearest_intersection(self.intersections)
+                dx = abs(car.x - inter.cx)
+                dy = abs(car.y - inter.cy)
+                if dx < ROAD_WIDTH // 2 and dy < ROAD_WIDTH // 2 and car.is_actively_waiting(inter) and car.stopped_time > 4.0:
+                    should_build_heat = True
+                    break
+
+
+            if should_build_heat:
+                inter.congestion_heat = inter.congestion_heat * 0.9 + dt * 1.5  # slower buildup
+            else:
+                inter.congestion_heat *= 0.9  # decay only
+
+            # Clamp
+            inter.congestion_heat = max(0.0, min(inter.congestion_heat, 10.0))
+
+    def update_only(self, dt, real_dt=None):
+        for inter in self.intersections:
+            inter.update(dt)
+
+        for car in self.cars:
+            car.road_speed_factor = self.get_speed_limit(car)
+            car.update(self.intersections, dt, self.cars)
+            nearest = car.get_nearest_intersection(self.intersections)
+            if nearest and car.is_actively_waiting(nearest):
+                nearest.waiting_cars += 1
+                nearest.waiting_time_total += dt
+
+            
+        self.heat_timer += dt
+        if self.heat_timer > 0.2:
+            self.update_congestion_heat(0.2)
+            self.heat_timer = 0
 
         for inter in self.intersections:
             inter.prev_waiting_cars = inter.waiting_cars
             inter.prev_waiting_time = inter.waiting_time_total
             inter.waiting_cars = 0
             inter.waiting_time_total = 0.0
+
 
         remaining = []
         for c in self.cars:
@@ -203,24 +261,3 @@ class Grid:
             low_throughput_penalty
         )
         self.total_congestion = intersection_congestion
-
-    def spawn_car(self):
-        edge = random.choices(["N", "S", "E", "W"], weights=[1, 1, 3, 3])[0]
-
-        if edge == "N":
-            col = random.choice(self.col_positions)
-            x, y, d = col, self.window_height, "N"
-        elif edge == "S":
-            col = random.choice(self.col_positions)
-            x, y, d = col, 0, "S"
-        elif edge == "E":
-            row = random.choice(self.row_positions)
-            x, y, d = 0, row, "E"
-        elif edge == "W":
-            row = random.choice(self.row_positions)
-            x, y, d = self.window_width - SIDEBAR_WIDTH, row, "W"
-
-    
-        dx, dy = compute_lane_offset(d)
-        self.cars.append(Car(x + dx, y  + dy, d, max_speed=CAR_SPEED, acceleration=CAR_ACCEL))
-
