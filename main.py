@@ -25,6 +25,16 @@ SPEED_DOWN_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10, SIM_SPEED_SECTI
 SPEED_UP_RECT = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 160, SIM_SPEED_SECTION_TOP + 25, 30, 30)
 
 
+def get_heatmap_button_pos():
+    # Calculate dynamic position based on UI layout
+    y = 20  # Starting y position
+    # Account for all the text lines (approximately)
+    line_count = 14  # Rough count of lines in the UI
+    line_height = 20  # Approximate line height
+    y += line_count * line_height
+    y += GRAPH_HEIGHT + 20  # Graph height plus spacing
+    return y
+
 def draw_ui(screen, graph_surface, font, grid, controller, show_heatmap, paused, fps):
     debug = controller.get_debug_info()
 
@@ -94,7 +104,9 @@ def draw_ui(screen, graph_surface, font, grid, controller, show_heatmap, paused,
         (header_font, "Live Traffic Stats:", TEXT_COLOR),
         (small_font, f"FPS: {fps:.1f}", TEXT_COLOR),
         (small_font, f"Avg Wait: {grid.avg_wait_time:.1f}s", TEXT_COLOR),
-        (small_font, f"Cars in grid: {debug['cars_in_grid']:.2f}", TEXT_COLOR),
+        # (small_font, f"Cars in grid: {debug['cars_in_grid']:.2f}", TEXT_COLOR),
+        (small_font, f"Last Eval: {controller.last_throughput:.1f} cars/min", TEXT_COLOR),
+        (small_font, f"Best: {controller.best_throughput:.1f} cars/min" if hasattr(controller, 'best_throughput') else "Best: 0.0 cars/min", COLOR_GREEN),
         
         (header_font, "", TEXT_COLOR),
         (header_font, "Annealing Debug:", TEXT_COLOR),
@@ -155,15 +167,17 @@ def draw_ui(screen, graph_surface, font, grid, controller, show_heatmap, paused,
 
     screen.blit(graph_surface, (draw_x, y))
 
+    # Update y position for controls after the graph
+    y += GRAPH_HEIGHT + 20
 
-    # Draw the heatmap toggle button
+    # Draw the heatmap toggle button (positioned dynamically)
     checkbox_label = "Show Heatmap"
     checkbox_font = pygame.font.SysFont("Arial", 16)
     checkbox_surface = checkbox_font.render(checkbox_label, True, TEXT_COLOR)
-    screen.blit(checkbox_surface, (HEATMAP_TOGGLE_RECT.x, HEATMAP_TOGGLE_RECT.y))
+    screen.blit(checkbox_surface, (draw_x, y))
 
     box_size = 20
-    box_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, box_size, box_size)
+    box_rect = pygame.Rect(draw_x + 130, y, box_size, box_size)
     pygame.draw.rect(screen, (200, 200, 200), box_rect)
     if show_heatmap:
         # Draw a black checkmark
@@ -233,7 +247,8 @@ def main():
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                box_click_rect = pygame.Rect(HEATMAP_TOGGLE_RECT.x + 130, HEATMAP_TOGGLE_RECT.y, 20, 20)
+                heatmap_y = get_heatmap_button_pos()
+                box_click_rect = pygame.Rect(WINDOW_WIDTH - SIDEBAR_WIDTH + 10 + 130, heatmap_y, 20, 20)
                 if box_click_rect.collidepoint(event.pos):
                     show_heatmap = not show_heatmap
                 if PAUSE_BUTTON_RECT.collidepoint(event.pos):

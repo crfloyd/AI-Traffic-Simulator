@@ -20,10 +20,18 @@ class Grid:
         self.headless = headless
         self.max_cars = 40 if self.headless else 40
         self.heat_timer = 0
-        info = pygame.display.Info()
-        self.window_width = info.current_w
-        self.window_height = info.current_h
-        self.glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+        
+        if self.headless:
+            # self.window_height = info.current_h
+            self.window_width = 1200
+            self.window_height = 1000
+            self.glow_surface = None
+        else:
+            info = pygame.display.Info()
+            self.window_width = info.current_w
+            self.window_height = info.current_h
+            self.glow_surface = pygame.Surface((ROAD_WIDTH * 2, ROAD_WIDTH * 2), pygame.SRCALPHA)
+        
         self.grid_width = self.window_width - SIDEBAR_WIDTH
         self.grid_height = self.window_height
 
@@ -47,6 +55,8 @@ class Grid:
         self.cars_processed = 0
         self.avg_wait_time = 0.0
         self.fitness = 0.0
+        self.elapsed_time = 0.0
+        self.throughput_cars_per_min = 0.0
 
         self.road_speed_limits = {
             "horizontal": {},
@@ -126,7 +136,7 @@ class Grid:
 
         # Now loop over intersections only to render heat glow
         for inter in self.intersections:
-            if inter.congestion_heat > 0.5:
+            if inter.congestion_heat > 0.5 and self.glow_surface is not None:
                 intensity = min(255, int((inter.congestion_heat - 0.5) * 40))
                 
                 if show_heatmap:
@@ -183,6 +193,9 @@ class Grid:
             inter.congestion_heat = max(0.0, min(inter.congestion_heat, 10.0))
 
     def update_only(self, dt, real_dt=None):
+        # Update elapsed time for throughput calculation
+        self.elapsed_time += dt
+        
         for inter in self.intersections:
             inter.update(dt)
 
@@ -217,6 +230,9 @@ class Grid:
         self.cars = remaining
 
         self.avg_wait_time = self.total_wait_time / self.cars_processed if self.cars_processed > 0 else 0.0
+        
+        # Calculate throughput (cars per minute)
+        self.throughput_cars_per_min = (self.cars_processed / self.elapsed_time * 60.0) if self.elapsed_time > 0 else 0.0
 
         self.spawn_timer += dt
         if self.headless:
@@ -239,24 +255,18 @@ class Grid:
         time_weight = 0.02
         norm_waiting_cars = sum(i.prev_waiting_cars * car_weight for i in self.intersections)
         norm_waiting_time = sum(i.prev_waiting_time * time_weight for i in self.intersections)
-        avg_age = sum(c.age for c in self.cars) / len(self.cars) if self.cars else 0
         spillovers = sum(1 for i in self.intersections if i.prev_waiting_cars > SPILLOVER_THRESHOLD)
-        low_throughput_penalty = 0.0
-        if self.cars_processed < 10:
-            low_throughput_penalty = 5.0
 
         self.fitness = (
             0.4 * self.avg_wait_time +
             1.0 * mildly_stopped +
-            3.0 * severely_stopped +
+            2.0 * severely_stopped +
             0.15 * heavy_congestion_penalty +
             0.05 * intersection_congestion +
             0.02 * intersection_wait_penalty +
             norm_waiting_cars +
             norm_waiting_time -
-            0.05 * self.cars_processed + 
-            0.1 * avg_age +
-            0.3 * spillovers +
-            low_throughput_penalty
+            0.1 * self.cars_processed + 
+            0.3 * spillovers
         )
         self.total_congestion = intersection_congestion

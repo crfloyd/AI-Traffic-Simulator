@@ -42,6 +42,7 @@ class AnnealingController:
         self.current_fitness = None
         self.best_fitness = None
         self.last_throughput = 0.0
+        self.best_throughput = 0.0
         self.fitness_history = []
 
         self.last_cars_processed = 0
@@ -110,6 +111,7 @@ class AnnealingController:
             self.grid.total_wait_time = 0.0
             self.grid.cars_processed = 0
             self.grid.avg_wait_time = 0.0
+            self.grid.elapsed_time = 0.0
 
             self.prev_config = [cfg.copy() for cfg in self.current_config]
             return
@@ -129,6 +131,7 @@ class AnnealingController:
             if self.current_fitness is None:
                 self.current_fitness = new_fitness
                 self.best_fitness = new_fitness
+                self.best_throughput = new_throughput
                 self.best_config = new_config
                 
                 # Apply best config visually
@@ -156,6 +159,7 @@ class AnnealingController:
                     if new_fitness < self.best_fitness:
                         self.best_config = new_config
                         self.best_fitness = new_fitness
+                        self.best_throughput = new_throughput
                         print("🌟 New best fitness:", self.best_fitness)
 
                         self.grid.cars.clear()

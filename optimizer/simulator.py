@@ -5,7 +5,7 @@ from simulation.grid import Grid
 class Simulator:
     def __init__(self):
         pygame.init()
-        self.clock = pygame.time.Clock()
+        pass
 
     def run(self, config, duration=30, return_cars=False):
         grid = Grid(headless=True)
@@ -20,11 +20,11 @@ class Simulator:
         total_sim_time = duration + warmup
 
         # Fixed timestep (simulate at 60 FPS)
-        dt = 1.0 / 60.0
+        dt = 1.0 / 30.0
         steps = int(total_sim_time / dt)
 
         for _ in range(steps):
-            grid.draw(None, dt)
+            grid.update_only(dt)
 
         # Only count stats from final `duration` seconds
         if return_cars:
